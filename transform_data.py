@@ -12,7 +12,7 @@ import json
 
 """ Run to update the .npy files (resized images and labels) from the downloaded dataset. """
 
-# train_paths = ['downloads/helen_1', 'downloads/helen_2', 'downloads/helen_3', 'downloads/helen_4']
-train_paths = ['downloads/helen_1']
+#train_paths = ['downloads/helen_1', 'downloads/helen_2', 'downloads/helen_3', 'downloads/helen_4', 'downloads/helen_5']
+train_paths = ['downloads/helen_5']
 train_props = helenUtils.DatasetProps('.jpg', '.txt', train_paths, 'downloads/annotation')
-helenUtils.save_data(train_props, 'data/train', 224)
+helenUtils.save_data(train_props, 'data/train', 224, append_to_names=True)

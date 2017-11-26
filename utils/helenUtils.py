@@ -18,7 +18,7 @@ class DatasetProps:
         self.label_paths = label_paths
 
 
-def save_data(props, npy_path, targ_im_len):
+def save_data(props, npy_path, targ_im_len, append_to_names=False):
     """
     :param props: instance of DatasetProps.
     """
@@ -26,7 +26,12 @@ def save_data(props, npy_path, targ_im_len):
     # train
     ims = read_images(props.im_paths, props.im_extension)
     labels = read_labels(props.label_paths, props.label_extension)
-    names = []
+    
+    if append_to_names == True:
+    	with open(npy_path + '/names.json') as fp:
+	    names = json.load(fp)
+    else:
+    	names = []
 
     milestone = max(len(ims) / 10, 1)
     print('Resizing samples ...')
@@ -39,7 +44,7 @@ def save_data(props, npy_path, targ_im_len):
         ims[name] = im
         all_ims.append(im)
         if iter != 0 and iter % milestone == 0:
-            print('\r    ' + str(100.0 * float(iter) / len(ims)) + '% complete', end='')
+            print('    ' + str(100.0 * float(iter) / len(ims)) + '% complete')
         iter += 1
 
     print('COMPLETE\n')
@@ -57,7 +62,7 @@ def save_data(props, npy_path, targ_im_len):
         np.save(npy_path + '/ims/' + name + '.npy', im)
         np.save(npy_path + '/labels/' + name + '.npy', labels[name])
         if iter != 0 and iter % milestone == 0:
-            print('\r    ' + str(100.0 * float(iter) / len(ims)) + '% complete', end='')
+            print('    ' + str(100.0 * float(iter) / len(ims)) + '% complete')
         iter += 1
 
     print('COMPLETE\n')
@@ -122,7 +127,7 @@ def read_images(paths, extension, max_images=-1):
         fname = fpaths[i][1]
         ims[fname[:-len(extension)]] = scipy.misc.imread(path + '/' + fname)
         if i != 0 and i % milestone == 0:
-            print('\r    ' + str(100.0 * float(i) / len(fpaths)) + '% complete', end='')
+            print('    ' + str(100.0 * float(i) / len(fpaths)) + '% complete')
     print('COMPLETE\n')
     return ims
 
