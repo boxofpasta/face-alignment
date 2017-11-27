@@ -4,71 +4,77 @@ import scipy.misc
 import matplotlib.pyplot as plt
 import numpy as np
 import utils
+import utils
 import json
-from skimage.transform import resize
+import sys
+import cv2
 from matplotlib.patches import Circle
 
 
 class DatasetProps:
 
-    def __init__(self, im_extension, label_extension, im_paths, label_paths):
+    def __init__(self, im_extension, label_extension, im_path, label_path):
+        """
+        :param im_extension: image extension, e.g '.png'
+        :param im_path: path to folder with images
+        """
         self.im_extension = im_extension
         self.label_extension = label_extension
-        self.im_paths = im_paths
-        self.label_paths = label_paths
+        self.im_path = im_path
+        self.label_path = label_path
 
 
-def save_data(props, npy_path, targ_im_len, append_to_names=False):
+def process_data(props, targ_im_len, sample_names=None):
     """
-    :param props: instance of DatasetProps.
+    :param props: instance of DatasetProps. props.im_paths specifies the folders to read from.
+    :param targ_im_len: the target image width and height. If -1, won't resize or warp.
+    :param sample_names: specific samples to read from.
+    :returns (ims, labels)
     """
 
     # train
-    ims = read_images(props.im_paths, props.im_extension)
-    labels = read_labels(props.label_paths, props.label_extension)
-    
-    if append_to_names == True:
-    	with open(npy_path + '/names.json') as fp:
-	    names = json.load(fp)
-    else:
-    	names = []
+    ims = read_images(props.im_path, props.im_extension, sample_names=sample_names)
+    labels = read_labels(props.label_path, props.label_extension, sample_names=sample_names)
+    print('\n\nResizing samples ...')
 
-    milestone = max(len(ims) / 10, 1)
-    print('Resizing samples ...')
-
-    all_ims = []
     iter = 0
     for name in ims:
-        im, label = resize_pair(ims[name], labels[name], targ_im_len, targ_im_len)
-        label = normalize_coords(label, targ_im_len, targ_im_len)
-        ims[name] = im
-        all_ims.append(im)
-        if iter != 0 and iter % milestone == 0:
-            print('    ' + str(100.0 * float(iter) / len(ims)) + '% complete')
+        if targ_im_len != -1:
+            print('resizing lool')
+            im, label = resize_pair(ims[name], labels[name], targ_im_len, targ_im_len)
+            labels[name] = normalize_coords(label, targ_im_len, targ_im_len)
+            ims[name] = im
+        utils.inform_progress(iter, len(ims))
         iter += 1
 
-    print('COMPLETE\n')
-
+    utils.inform_progress(1,1)
+    return ims, labels
     #""" data centering """
     #all_ims = np.array(all_ims)
     #mean_im = np.average(all_ims, axis=0)
     #std_im = np.average(np.abs(all_ims - mean_im), axis=0)
 
-    print('Normalizing data and serializing to disk ...')
+
+def serialize_data(ims, labels, npy_path):
+    print('\n\nNormalizing data and serializing to disk ...')
+    try:
+        # avoid overwriting data in json
+        with open(npy_path + '/names.json') as fp:
+            names_set = set(json.load(fp))
+    except ValueError:
+        names_set = set()
     iter = 0
     for name in ims:
-        names.append(name)
+        names_set.add(name)
         im = ims[name]
         np.save(npy_path + '/ims/' + name + '.npy', im)
         np.save(npy_path + '/labels/' + name + '.npy', labels[name])
-        if iter != 0 and iter % milestone == 0:
-            print('    ' + str(100.0 * float(iter) / len(ims)) + '% complete')
+        utils.inform_progress(iter, len(ims))
         iter += 1
 
-    print('COMPLETE\n')
-
+    utils.inform_progress(1,1)
     with open(npy_path + '/names.json', 'wb') as fp:
-        json.dump(names, fp)
+        json.dump(list(names_set), fp)
 
 
 def normalize_coords(coords, im_width, im_height):
@@ -86,7 +92,8 @@ def resize_pair(im, label, targ_width, targ_height):
     for coords in label:
         coords[0] *= scale_x
         coords[1] *= scale_y
-    return [resize(im, (targ_height, targ_width)), label]
+    resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_CUBIC)
+    return [resized, label]
 
 
 def get_ordered(ims, labels):
@@ -103,59 +110,52 @@ def get_ordered(ims, labels):
     return [ims_ordered, labels_ordered]
 
 
-def read_images(paths, extension, max_images=-1):
+def read_images(path, extension, sample_names=None):
     """
-    :param paths: paths to all folders that we will read from
+    :param path: paths to folder that we're reading from
     :param extension: file extension, e.g '.png'
-    :param max_images: the max. number of images to read into array before stopping. -1 means all of them.
+    :param sample_names: the samples in the folder to read from. If None, will read all of them.
     :returns: dictionary of images, with key being filename without extension
     """
 
     print('Reading images ...')
     ims = {}
-    fpaths = []
-    for path in paths:
+
+    if sample_names == None:
+        sample_names = []
         for fname in os.listdir(path):
             if fname.endswith(extension):
-                fpaths.append([path, fname])
-            if max_images != -1 and len(fpaths) >= max_images:
-                break
+                sample_names.append(fname[:-len(extension)])
 
-    milestone = max(len(fpaths) / 10, 1)
-    for i in range(0, len(fpaths)):
-        path = fpaths[i][0]
-        fname = fpaths[i][1]
-        ims[fname[:-len(extension)]] = scipy.misc.imread(path + '/' + fname)
-        if i != 0 and i % milestone == 0:
-            print('    ' + str(100.0 * float(i) / len(fpaths)) + '% complete')
-    print('COMPLETE\n')
+    for i in range(0, len(sample_names)):
+        ims[sample_names[i]] = scipy.misc.imread(path + '/' + sample_names[i] + extension)
+        utils.inform_progress(i, len(sample_names))
+    utils.inform_progress(1, 1)
     return ims
 
 
-def read_labels(path, extension, max_labels=-1):
+def read_labels(path, extension, sample_names):
     """
     :param path: path to folder
     :param extension: file extension, e.g '.png'
-    :param max_labels: the max. number of labels to read into array before stopping. -1 means all of them.
+    :param sample_names: the samples in the folder to read from. If None, will read all of them.
     :returns dictionary of labels, with key being filename without extension
     """
     labels = {}
+    allowed_samples = set(sample_names)
+
     for fname in os.listdir(path):
         if fname.endswith(extension):
-            cur_labels = []
             lines = open(path + '/' + fname).readlines()
-            key = fname[:-len(extension)]
-            for i in range(0, len(lines)):
-                if i == 0:
-                    key = lines[i].strip()
-                else:
+            key = lines[0].strip()
+            if sample_names == None or key in allowed_samples:
+                cur_labels = []
+                for i in range(1, len(lines)):
                     coords = []
                     for s in lines[i].split():
                         if utils.is_number(s):
                             coords.append(float(s))
                     if len(coords) == 2:
                         cur_labels.append(coords)
-            labels[key] = cur_labels
-        if max_labels != -1 and len(labels) >= max_labels:
-            break
+                labels[key] = cur_labels
     return labels
