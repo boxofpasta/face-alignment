@@ -1,6 +1,7 @@
 import os
 import sys
 import scipy.misc
+import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
@@ -14,14 +15,17 @@ def is_number(s):
 
 def visualize_labels(im, coords):
     """
-        :param im: the 2D array image
-        :param coords: the coordinates to draw e.g [[21, 10]]
+    Parameters
+    ----------
+    im : 
+        the 2D array image.
+    coords : 
+        the coordinates to draw e.g [[21, 10]].
     """
     fig, ax = plt.subplots(1)
     ax.set_aspect('equal')
     ax.imshow(im)
     radius = 0.001 * len(im)
-
     for i in range(0, len(coords)):
         x = coords[i][0]
         y = coords[i][1]

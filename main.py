@@ -2,8 +2,8 @@ import os
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
-import matplotlib.pyplot as plt
+#matplotlib.use('Qt5Agg')
+#import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.utils as utils
 from matplotlib.patches import Circle
@@ -55,12 +55,22 @@ def visualize_samples(model=None):
 
 
 if __name__ == '__main__':
-    """batch_generator = BatchGenerator.BatchGenerator('data/train')
+    batch_generator = BatchGenerator.BatchGenerator('data/train')
+    """g = batch_generator.generate()
+    
+    i = 0
+    for item in g:
+        print item[0].shape
+        print item[1].shape
+        i += 1
+        if i >= batch_generator.num_total_samples():
+            break"""
+
     factory = ModelFactory.ModelFactory()
     model = factory.getFullyConnected()
     model.fit_generator(generator=batch_generator.generate(),
                         steps_per_epoch=batch_generator.steps_per_epoch,
                         epochs=40)
 
-    model.save('models/saved/fully_connected.h5')"""
-    visualize_samples()
+    model.save('models/temp/fully_connected.h5')
+    #visualize_samples()

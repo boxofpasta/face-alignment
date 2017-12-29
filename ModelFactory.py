@@ -23,7 +23,11 @@ class ModelFactory:
         self.im_height = 224
         self.num_coords = 194
 
-    """ Collection of factory methods to build keras models. """
+    """ 
+    ----------------------------------------------------------------
+        Collection of factory methods to build keras models. 
+    ----------------------------------------------------------------
+    """
 
     def getFullyConnected(self):
 
@@ -38,8 +42,11 @@ class ModelFactory:
         model.compile(loss=self.squaredDistanceLoss, optimizer='adam')
         return model
 
-
-    """ Helpers to build custom tensorflow loss functions. """
+    """ 
+    ----------------------------------------------------------------
+        Helpers to build custom tensorflow loss functions.
+    ----------------------------------------------------------------
+    """
 
     def squaredDistanceLoss(self, y_true, y_pred):
         y_true = K.reshape(y_true, (-1, self.num_coords, 2))

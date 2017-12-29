@@ -16,9 +16,12 @@ class BatchGenerator:
 
     def __init__(self, train_path, val_path=None, test_path=None, read_all=False):
         """
-        :param read_all: If True, will read all the .npy files into an array at once. Better for small datasets.
+        Parameters
+        ----------
+        read_all: 
+            If True, will read all the .npy files into an array at once. Better for small datasets.
         """
-        self.batch_size = 50
+        self.batch_size = 1
         self.names = []
         
         # filled only if read_all == True
@@ -44,6 +47,8 @@ class BatchGenerator:
                 self.all_ims.append(np.load(im_path))
                 self.all_labels.append(np.load(label_path).flatten())
 
+    def num_total_samples(self):
+        return len(self.names)
 
     def generate(self):
 

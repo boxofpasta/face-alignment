@@ -3,8 +3,7 @@ import os
 import scipy.misc
 import matplotlib.pyplot as plt
 import numpy as np
-import utils
-import utils
+import generalUtils as utils
 import json
 import sys
 import cv2
@@ -15,8 +14,12 @@ class DatasetProps:
 
     def __init__(self, im_extension, label_extension, im_path, label_path):
         """
-        :param im_extension: image extension, e.g '.png'
-        :param im_path: path to folder with images
+        Parameters
+        ----------
+        im_extension: 
+            image extension, e.g '.png'
+        im_path: 
+            path to folder with images
         """
         self.im_extension = im_extension
         self.label_extension = label_extension
@@ -26,28 +29,38 @@ class DatasetProps:
 
 def process_data(props, targ_im_len, sample_names=None):
     """
-    :param props: instance of DatasetProps. props.im_paths specifies the folders to read from.
-    :param targ_im_len: the target image width and height. If -1, won't resize or warp.
-    :param sample_names: specific samples to read from.
-    :returns (ims, labels)
+    Parameters
+    ----------
+    props: 
+        instance of DatasetProps. props.im_paths specifies the folders to read from.
+    targ_im_len: 
+        the target image width and height. If -1, won't resize or warp.
+    sample_names: 
+        specific samples to read from.
+
+    Returns
+    -------
+    (ims, labels)
     """
 
     # train
     ims = read_images(props.im_path, props.im_extension, sample_names=sample_names)
     labels = read_labels(props.label_path, props.label_extension, sample_names=sample_names)
-    print('\n\nResizing samples ...')
 
-    iter = 0
-    for name in ims:
-        if targ_im_len != -1:
-            print('resizing lool')
-            im, label = resize_pair(ims[name], labels[name], targ_im_len, targ_im_len)
-            labels[name] = normalize_coords(label, targ_im_len, targ_im_len)
-            ims[name] = im
-        utils.inform_progress(iter, len(ims))
-        iter += 1
+    if targ_im_len != -1:
+        print('\n\nResizing samples ...')
+        iter = 0
+        for name in ims:
+            if targ_im_len != -1:
+                im, label = resize_pair(ims[name], labels[name], targ_im_len, targ_im_len)
+                labels[name] = normalize_coords(label, targ_im_len, targ_im_len)
+                ims[name] = im
+            utils.inform_progress(iter, len(ims))
+            iter += 1
+        utils.inform_progress(1,1)
+    else:
+        print('\n\nNo target dimension provided, not resizing.')
 
-    utils.inform_progress(1,1)
     return ims, labels
     #""" data centering """
     #all_ims = np.array(all_ims)
@@ -73,6 +86,7 @@ def serialize_data(ims, labels, npy_path):
         iter += 1
 
     utils.inform_progress(1,1)
+    print('\n')
     with open(npy_path + '/names.json', 'wb') as fp:
         json.dump(list(names_set), fp)
 
@@ -98,10 +112,16 @@ def resize_pair(im, label, targ_width, targ_height):
 
 def get_ordered(ims, labels):
     """
-    :param ims: a dictionary of images
-    :param labels: a dictionary of labels
+    Parameters
+    ----------
+    ims: 
+        a dictionary of images
+    labels:
+        a dictionary of labels
 
-    :return: [ims_arr, labels_arr], where ims_arr[i] corresponds to labels_arr[i]
+    Returns
+    -------
+    [ims_arr, labels_arr], where ims_arr[i] corresponds to labels_arr[i]
     """
     ims_ordered, labels_ordered = [], []
     for name in ims:
@@ -112,10 +132,18 @@ def get_ordered(ims, labels):
 
 def read_images(path, extension, sample_names=None):
     """
-    :param path: paths to folder that we're reading from
-    :param extension: file extension, e.g '.png'
-    :param sample_names: the samples in the folder to read from. If None, will read all of them.
-    :returns: dictionary of images, with key being filename without extension
+    Parameters
+    ----------
+    path: 
+        path to folder
+    extension: 
+        file extension, e.g '.png'
+    sample_names: 
+        the samples in the folder to read from. If None, will read all of them.
+
+    Returns
+    -------
+        dictionary of images, with key being filename without extension
     """
 
     print('Reading images ...')
@@ -136,13 +164,23 @@ def read_images(path, extension, sample_names=None):
 
 def read_labels(path, extension, sample_names):
     """
-    :param path: path to folder
-    :param extension: file extension, e.g '.png'
-    :param sample_names: the samples in the folder to read from. If None, will read all of them.
-    :returns dictionary of labels, with key being filename without extension
+    Parameters
+    ----------
+    path: 
+        path to folder
+    extension: 
+        file extension, e.g '.png'
+    sample_names: 
+        the samples in the folder to read from. If None, will read all of them.
+
+    Returns
+    -------
+        dictionary of labels, with key being filename without extension
     """
     labels = {}
-    allowed_samples = set(sample_names)
+
+    if sample_names != None:
+        allowed_samples = set(sample_names)
 
     for fname in os.listdir(path):
         if fname.endswith(extension):
