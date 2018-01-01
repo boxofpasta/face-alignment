@@ -38,5 +38,5 @@ def visualize_labels(im, coords):
 def inform_progress(iter, total):
     milestone = max(total / 100, 1)
     if iter != 0 and iter % milestone == 0:
-        sys.stdout.write('\r    ' + str(100.0 * float(iter) / total) + '% complete')
+        sys.stdout.write('\r    ' + str(round(100.0 * float(iter) / total, 1)) + '% complete')
         sys.stdout.flush()

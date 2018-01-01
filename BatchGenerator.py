@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import utils.helenUtils as helenUtils
-import utils.utils as utils
+import utils.generalUtils as utils
 import json
 
 
@@ -21,7 +21,7 @@ class BatchGenerator:
         read_all: 
             If True, will read all the .npy files into an array at once. Better for small datasets.
         """
-        self.batch_size = 1
+        self.batch_size = 50
         self.names = []
         
         # filled only if read_all == True
@@ -39,6 +39,8 @@ class BatchGenerator:
 
         self.steps_per_epoch = len(self.names) / self.batch_size
         if read_all == True:
+            self.all_ims, self.all_labels = helenUtils.get_all_data(train_path)
+            """
             self.all_ims = []
             self.all_labels = []
             for name in self.names:
@@ -46,6 +48,7 @@ class BatchGenerator:
                 label_path = self.train_labels_path + '/' + name + self.label_extension
                 self.all_ims.append(np.load(im_path))
                 self.all_labels.append(np.load(label_path).flatten())
+            """
 
     def num_total_samples(self):
         return len(self.names)

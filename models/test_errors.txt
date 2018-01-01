@@ -1,0 +1,5 @@
+Euclidean distance squared b/w pred and truth, averaged over the images in 'helen_test':
+
+fully_connected_v1.h5 : 0.0214373080675
+fully_connected_v2.h5 (fine-tuned on a smaller sample) : 
+

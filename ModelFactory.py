@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import utils.helenUtils as helenUtils
-import utils.utils as utils
+import utils.generalUtils as utils
 import json
 import time
 import sys
@@ -52,5 +52,4 @@ class ModelFactory:
         y_true = K.reshape(y_true, (-1, self.num_coords, 2))
         y_pred = K.reshape(y_pred, (-1, self.num_coords, 2))
         sqrd_diff = K.sum(K.square(y_true - y_pred), axis=2)
-        dist = K.sqrt(sqrd_diff)
-        return K.sum(dist, axis=-1)
+        return K.sum(sqrd_diff, axis=-1)

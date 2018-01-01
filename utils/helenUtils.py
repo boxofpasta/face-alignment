@@ -27,6 +27,28 @@ class DatasetProps:
         self.label_path = label_path
 
 
+def get_all_data(path):
+    """
+    Assumes that path/ims, path/labels folders exist (and contain .npy files).
+    Assumes that path/names.json exists with names of all examples to run tests over.
+    See functions below for implementations that serialize in this format.
+
+    Returns
+    -------
+    (all_ims, all_labels) 
+    """
+    with open(path + '/names.json') as fp:
+        names_set = set(json.load(fp))
+    
+    all_ims, all_labels = [], []
+    for name in names_set:
+        im = np.load(path + '/ims/' + name + '.npy')
+        label = np.load(path + '/labels/' + name + '.npy')
+        all_ims.append(im)
+        all_labels.append(label)
+    return (all_ims, all_labels)
+
+
 def process_data(props, targ_im_len, sample_names=None):
     """
     Parameters
@@ -70,11 +92,17 @@ def process_data(props, targ_im_len, sample_names=None):
 
 def serialize_data(ims, labels, npy_path):
     print('\n\nNormalizing data and serializing to disk ...')
+    if not os.path.exists(npy_path):
+        os.makedirs(npy_path)
+    if not os.path.exists(npy_path + '/ims'):
+        os.makedirs(npy_path + '/ims')
+    if not os.path.exists(npy_path + '/labels'):
+        os.makedirs(npy_path + '/labels')
     try:
         # avoid overwriting data in json
         with open(npy_path + '/names.json') as fp:
             names_set = set(json.load(fp))
-    except ValueError:
+    except IOError or ValueError:
         names_set = set()
     iter = 0
     for name in ims:
