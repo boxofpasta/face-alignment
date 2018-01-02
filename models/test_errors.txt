@@ -1,6 +1,6 @@
 Average euclidean distance squared b/w pred and truth points. 
-Note that all point coordinates (there are 97) were normalized to be b/w [0, 1].
+Note that all point coordinates (there are 194) were normalized to be b/w [0, 1].
 
-fully_connected_v1.h5 : 0.00022100
-fully_connected_v2.h5 (fine-tuned on 1/4 of the dataset) : 0.00022921
+fully_connected_v1.h5 : 0.00011050
+fully_connected_v2.h5 (fine-tuned on 1/4 of the dataset) : 0.00011460
 

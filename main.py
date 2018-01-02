@@ -1,9 +1,10 @@
 import os
+import time
 import scipy.misc
 import numpy as np
 import matplotlib
 matplotlib.use('Qt5Agg')
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
 from matplotlib.patches import Circle
@@ -23,6 +24,7 @@ def get_saved_model(path):
     factory = ModelFactory.ModelFactory()
     model = load_model(path, custom_objects={
         'squaredDistanceLoss': factory.squaredDistanceLoss,
+        'heatmapSoftmaxLoss': factory.heatmapSoftmaxLoss,
         'relu6': mobilenet.relu6,
         'DepthwiseConv2D': mobilenet.DepthwiseConv2D})
     print 'COMPLETE'
@@ -48,9 +50,22 @@ def try_saved_model(path):
         label *= 224
         utils.visualize_labels(im, label)
 
+def visualize_heatmaps():
+    fnames = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
+    pdfs = utils.get_gaussians(10000, 56)
+
+    for fname in fnames:
+        coords = np.load('data/train/labels/' + fname)
+        coords = np.reshape(coords, (194, 2))
+        heatmap = utils.coords_to_heatmaps_fast(coords, pdfs)
+        heatmap = np.moveaxis(heatmap, 0, -1)
+        summed = np.sum(heatmap, axis=-1)
+        plt.imshow(summed)
+        plt.show()
 
 def visualize_samples(model=None):
     fnames = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
+    pdfs = utils.get_gaussians(10000, 56)
     for fname in fnames:
         im = np.load('data/train/ims/' + fname)
 
@@ -79,18 +94,18 @@ def get_avg_test_error(model, test_path):
     return error / len(preds)
 
 if __name__ == '__main__':
-    model = get_saved_model('models/fully_connected_v2.h5')
-    print get_avg_test_error(model, 'data/test')
+    #model = get_saved_model('models/fully_connected_v2.h5')
+    #print get_avg_test_error(model, 'data/test')
 
-    #visualize_samples()
+    visualize_samples()
     #try_saved_model('models/fully_connected_v1.h5')
-    #model = get_saved_model('models/tmp/fully_connected.h5')
-    """batch_generator = BatchGenerator.BatchGenerator('data/train')
-    #factory = ModelFactory.ModelFactory()
-    #model = factory.getFullyConnected()
+    #model = get_saved_model('models/tmp/fully_conv.h5')
+    """factory = ModelFactory.ModelFactory()
+    model = factory.getFullyConvolutional()
+    batch_generator = BatchGenerator.BatchGenerator('data/train', factory.mask_side_len)
     model.fit_generator(generator=batch_generator.generate(),
                         steps_per_epoch=batch_generator.steps_per_epoch,
-                        epochs=50)
+                        epochs=10)
 
-    model.save('models/tmp/fully_connected.h5')"""
+    model.save('models/tmp/fully_conv.h5')"""
     #visualize_samples()

@@ -1,5 +1,7 @@
+from scipy.stats import norm
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
 import json
@@ -14,14 +16,16 @@ class BatchGenerator:
         The names of all samples (training pairs) must be in train_path/names.json.
     """
 
-    def __init__(self, train_path, val_path=None, test_path=None, read_all=False):
+    def __init__(self, train_path, mask_side_len, val_path=None, read_all=False):
         """
         Parameters
         ----------
         read_all: 
             If True, will read all the .npy files into an array at once. Better for small datasets.
         """
+        self.num_coords = 194
         self.batch_size = 50
+        self.mask_side_len = mask_side_len
         self.names = []
         
         # filled only if read_all == True
@@ -33,6 +37,9 @@ class BatchGenerator:
         self.train_labels_path = train_path + '/labels'
         self.im_extension = '.npy'
         self.label_extension = '.npy'
+
+        # pdfs cache for speeding up heatmap expansions
+        self.pdfs = utils.get_gaussians(10000, self.mask_side_len)
         
         with open(self.name_path) as fp:
             self.names = json.load(fp)
@@ -40,6 +47,7 @@ class BatchGenerator:
         self.steps_per_epoch = len(self.names) / self.batch_size
         if read_all == True:
             self.all_ims, self.all_labels = helenUtils.get_all_data(train_path)
+            raise NameError('hey programmer, labels need to be converted to heatmaps')
             """
             self.all_ims = []
             self.all_labels = []
@@ -80,6 +88,10 @@ class BatchGenerator:
                     Y = []
                     for name in cur_names:
                         X.append(np.load(self.train_ims_path + '/' + name + self.im_extension))
-                        Y.append(np.load(self.train_labels_path + '/' + name + self.label_extension).flatten())
+                        coords = np.load(self.train_labels_path + '/' + name + self.label_extension)
+                        coords = np.reshape(coords, (self.num_coords, 2))
+                        heatmap = utils.coords_to_heatmaps_fast(coords, self.pdfs)
+                        heatmap = np.moveaxis(heatmap, 0, -1)
+                        Y.append(heatmap)
                 yield np.array(X), np.array(Y)
 
