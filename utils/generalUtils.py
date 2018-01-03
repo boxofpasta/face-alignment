@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 from matplotlib.patches import Circle
 
-def is_number(s):
+def isNumber(s):
     try:
         float(s)
         return True
@@ -17,7 +17,7 @@ def is_number(s):
 def gaussian(x, mu, sig):
     return 1./(np.sqrt(2.*np.pi)*sig)*np.exp(-np.power((x - mu)/sig, 2.)/2)
 
-def get_gaussians(num_means, num_elements, stddev=0.01):
+def getGaussians(num_means, num_elements, stddev=0.01):
     """
     Parameters
     ----------
@@ -40,7 +40,7 @@ def get_gaussians(num_means, num_elements, stddev=0.01):
         gaussians.append(pdf)
     return gaussians
 
-def coords_to_heatmaps_fast(coords, pdfs):
+def coordsToHeatmapsFast(coords, pdfs):
     """
     Uses a table of pdfs (ideally shared b/w invocations) to speed up heatmap computation.
     
@@ -68,7 +68,7 @@ def coords_to_heatmaps_fast(coords, pdfs):
         heatmaps.append(heatmap)
     return heatmaps
 
-def coords_to_heatmaps(coords, elms_per_side, stddev=0.01):
+def coordsToHeatmaps(coords, elms_per_side, stddev=0.01):
     """
     Parameters
     ----------
@@ -92,7 +92,7 @@ def coords_to_heatmaps(coords, elms_per_side, stddev=0.01):
         heatmaps.append(heatmap)
     return heatmaps
 
-def visualize_labels(im, coords):
+def visualizeLabels(im, coords):
     """
     Parameters
     ----------

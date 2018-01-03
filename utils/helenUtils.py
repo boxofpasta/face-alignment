@@ -27,7 +27,7 @@ class DatasetProps:
         self.label_path = label_path
 
 
-def get_all_data(path):
+def getAllData(path):
     """
     Assumes that path/ims, path/labels folders exist (and contain .npy files).
     Assumes that path/names.json exists with names of all examples to run tests over.
@@ -49,7 +49,7 @@ def get_all_data(path):
     return (all_ims, all_labels)
 
 
-def process_data(props, targ_im_len, sample_names=None):
+def processData(props, targ_im_len, sample_names=None):
     """
     Parameters
     ----------
@@ -67,15 +67,15 @@ def process_data(props, targ_im_len, sample_names=None):
 
     # train
     ims = read_images(props.im_path, props.im_extension, sample_names=sample_names)
-    labels = read_labels(props.label_path, props.label_extension, sample_names=sample_names)
+    labels = readLabels(props.label_path, props.label_extension, sample_names=sample_names)
 
     if targ_im_len != -1:
         print('\n\nResizing samples ...')
         iter = 0
         for name in ims:
             if targ_im_len != -1:
-                im, label = resize_pair(ims[name], labels[name], targ_im_len, targ_im_len)
-                labels[name] = normalize_coords(label, targ_im_len, targ_im_len)
+                im, label = resizePair(ims[name], labels[name], targ_im_len, targ_im_len)
+                labels[name] = normalizeCoords(label, targ_im_len, targ_im_len)
                 ims[name] = im
             utils.inform_progress(iter, len(ims))
             iter += 1
@@ -90,7 +90,7 @@ def process_data(props, targ_im_len, sample_names=None):
     #std_im = np.average(np.abs(all_ims - mean_im), axis=0)
 
 
-def serialize_data(ims, labels, npy_path):
+def serializeData(ims, labels, npy_path):
     print('\n\nNormalizing data and serializing to disk ...')
     if not os.path.exists(npy_path):
         os.makedirs(npy_path)
@@ -119,14 +119,14 @@ def serialize_data(ims, labels, npy_path):
         json.dump(list(names_set), fp)
 
 
-def normalize_coords(coords, im_width, im_height):
+def normalizeCoords(coords, im_width, im_height):
     for coord in coords:
         coord[0] /= im_height
         coord[1] /= im_width
     return coords
 
 
-def resize_pair(im, label, targ_width, targ_height):
+def resizePair(im, label, targ_width, targ_height):
     cur_height = len(im)
     cur_width = len(im[0])
     scale_x = float(targ_width) / cur_width
@@ -138,7 +138,7 @@ def resize_pair(im, label, targ_width, targ_height):
     return [resized, label]
 
 
-def get_ordered(ims, labels):
+def getOrdered(ims, labels):
     """
     Parameters
     ----------
@@ -190,7 +190,7 @@ def read_images(path, extension, sample_names=None):
     return ims
 
 
-def read_labels(path, extension, sample_names):
+def readLabels(path, extension, sample_names):
     """
     Parameters
     ----------
@@ -219,7 +219,7 @@ def read_labels(path, extension, sample_names):
                 for i in range(1, len(lines)):
                     coords = []
                     for s in lines[i].split():
-                        if utils.is_number(s):
+                        if utils.isNumber(s):
                             coords.append(float(s))
                     if len(coords) == 2:
                         cur_labels.append(coords)

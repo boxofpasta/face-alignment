@@ -25,8 +25,8 @@ if transform_test:
     npy_test_path = 'data/test'
     print "\nProcessing images in " + path + " and saving to " + npy_test_path + "... \n"
     test_props = helenUtils.DatasetProps('.jpg', '.txt', path, 'downloads/annotation')
-    ims, labels = helenUtils.process_data(test_props, targ_im_len, sample_names=None)
-    helenUtils.serialize_data(ims, labels, npy_test_path)
+    ims, labels = helenUtils.processData(test_props, targ_im_len, sample_names=None)
+    helenUtils.serializeData(ims, labels, npy_test_path)
 
 if transform_train:
 
@@ -51,8 +51,8 @@ if transform_train:
     for path in train_paths:
         print "\nProcessing images in " + path + " and saving to " + npy_path + "... \n"
         train_props = helenUtils.DatasetProps('.jpg', '.txt', path, 'downloads/annotation')
-        ims, labels = helenUtils.process_data(train_props, targ_im_len, sample_names=sample_names)
-        helenUtils.serialize_data(ims, labels, npy_path)
+        ims, labels = helenUtils.processData(train_props, targ_im_len, sample_names=sample_names)
+        helenUtils.serializeData(ims, labels, npy_path)
 
 # visualize the serialized samples
 if use_samples:
@@ -67,6 +67,6 @@ if use_samples:
             coord[0] -= 1
             coord[1] -= 1
         label *= factor
-        utils.visualize_labels(im, label)
+        utils.visualizeLabels(im, label)
 
 #helenUtils.save_data(train_props, 'data/train', 224, append_to_names=False)

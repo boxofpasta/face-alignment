@@ -64,6 +64,30 @@ class ModelFactory:
         model.compile(loss=self.heatmapSoftmaxLoss, optimizer='adam')
         return model
 
+
+    """ 
+    ----------------------------------------------------------------
+        Loading saved models.
+    ----------------------------------------------------------------
+    """
+    def getFullyConvolutionalSaved(self):
+        print 'Loading model ...'
+        model = load_model(path, custom_objects={
+            'heatmapSoftmaxLoss': self.heatmapSoftmaxLoss,
+            'relu6': mobilenet.relu6,
+            'DepthwiseConv2D': mobilenet.DepthwiseConv2D})
+        print 'COMPLETE'
+        return model
+
+    def getFullyConnectedSaved(self):
+        print 'Loading model ...'
+        model = load_model(path, custom_objects={
+            'squaredDistanceLoss': self.squaredDistanceLoss,
+            'relu6': mobilenet.relu6,
+            'DepthwiseConv2D': mobilenet.DepthwiseConv2D})
+        print 'COMPLETE'
+        return model
+
     """ 
     ----------------------------------------------------------------
         Helpers to build custom tensorflow loss functions.

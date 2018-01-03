@@ -4,8 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
-import json
+import json 
 
+"""
+This file contains BatchGenerator (which returns unaltered helen labels as float array),
+along with any subclasses that need to do more advanced processing of labels.
+"""
 
 class BatchGenerator:
     """
@@ -15,8 +19,7 @@ class BatchGenerator:
         Labels and images that correspond to each other must have the same name (excluding file extension).
         The names of all samples (training pairs) must be in train_path/names.json.
     """
-
-    def __init__(self, train_path, mask_side_len, val_path=None, read_all=False):
+    def __init__(self, train_path, val_path=None, read_all=False):
         """
         Parameters
         ----------
@@ -25,7 +28,6 @@ class BatchGenerator:
         """
         self.num_coords = 194
         self.batch_size = 50
-        self.mask_side_len = mask_side_len
         self.names = []
         
         # filled only if read_all == True
@@ -37,16 +39,13 @@ class BatchGenerator:
         self.train_labels_path = train_path + '/labels'
         self.im_extension = '.npy'
         self.label_extension = '.npy'
-
-        # pdfs cache for speeding up heatmap expansions
-        self.pdfs = utils.get_gaussians(10000, self.mask_side_len)
         
         with open(self.name_path) as fp:
             self.names = json.load(fp)
 
         self.steps_per_epoch = len(self.names) / self.batch_size
         if read_all == True:
-            self.all_ims, self.all_labels = helenUtils.get_all_data(train_path)
+            self.all_ims, self.all_labels = helenUtils.getAllData(train_path)
             raise NameError('hey programmer, labels need to be converted to heatmaps')
             """
             self.all_ims = []
@@ -58,11 +57,13 @@ class BatchGenerator:
                 self.all_labels.append(np.load(label_path).flatten())
             """
 
-    def num_total_samples(self):
+    def numTotalSamples(self):
         return len(self.names)
 
-    def generate(self):
+    def getLabel(self, coords):
+        return coords
 
+    def generate(self):
         while(True):
 
             # epoch complete
@@ -89,9 +90,22 @@ class BatchGenerator:
                     for name in cur_names:
                         X.append(np.load(self.train_ims_path + '/' + name + self.im_extension))
                         coords = np.load(self.train_labels_path + '/' + name + self.label_extension)
-                        coords = np.reshape(coords, (self.num_coords, 2))
-                        heatmap = utils.coords_to_heatmaps_fast(coords, self.pdfs)
-                        heatmap = np.moveaxis(heatmap, 0, -1)
-                        Y.append(heatmap)
+                        Y.append(self.getLabel(coords))
                 yield np.array(X), np.array(Y)
+
+
+class HeatmapBatchGenerator(BatchGenerator):
+
+    def __init__(self, train_path, heatmap_sidelen, val_path=None, read_all=False):
+        BatchGenerator.__init__(train_path, val_path, read_all)
+
+        # pdfs cache for speeding up heatmap expansions (makes a big difference in training times)
+        self.heatmap_sidelen = heatmap_sidelen
+        self.pdfs = utils.getGaussians(10000, self.heatmap_sidelen)
+
+    def getLabel(self, coords):
+        coords = np.reshape(coords, (self.num_coords, 2))
+        heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
+        heatmap = np.moveaxis(heatmap, 0, -1)
+        return heatmap
 

@@ -19,18 +19,7 @@ from keras.models import load_model
 from keras.applications import mobilenet
 
 
-def get_saved_model(path):
-    print 'Loading model ...'
-    factory = ModelFactory.ModelFactory()
-    model = load_model(path, custom_objects={
-        'squaredDistanceLoss': factory.squaredDistanceLoss,
-        'heatmapSoftmaxLoss': factory.heatmapSoftmaxLoss,
-        'relu6': mobilenet.relu6,
-        'DepthwiseConv2D': mobilenet.DepthwiseConv2D})
-    print 'COMPLETE'
-    return model
-
-def try_saved_model(path):
+def trySavedFullyConnected(path):
     model = get_saved_model(path)
     sample_paths = []
     for fname in os.listdir('downloads/samples'):
@@ -48,24 +37,24 @@ def try_saved_model(path):
         label = model.predict(np.array([im]), batch_size=1)
         label = np.reshape(label, (194, 2))
         label *= 224
-        utils.visualize_labels(im, label)
+        utils.visualizeLabels(im, label)
 
-def visualize_heatmaps():
+def visualizeHeatmaps():
     fnames = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
-    pdfs = utils.get_gaussians(10000, 56)
+    pdfs = utils.getGaussians(10000, 56)
 
     for fname in fnames:
         coords = np.load('data/train/labels/' + fname)
         coords = np.reshape(coords, (194, 2))
-        heatmap = utils.coords_to_heatmaps_fast(coords, pdfs)
+        heatmap = utils.coordsToHeatmapsFast(coords, pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
         summed = np.sum(heatmap, axis=-1)
         plt.imshow(summed)
         plt.show()
 
-def visualize_samples(model=None):
+def visualizeSamples(model=None):
     fnames = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
-    pdfs = utils.get_gaussians(10000, 56)
+    pdfs = utils.getGaussians(10000, 56)
     for fname in fnames:
         im = np.load('data/train/ims/' + fname)
 
@@ -76,11 +65,11 @@ def visualize_samples(model=None):
 
         label = np.reshape(label, (194, 2))
         label *= 224
-        utils.visualize_labels(im, label)
+        utils.visualizeLabels(im, label)
 
 
-def get_avg_test_error(model, test_path):
-    all_ims, all_labels = helenUtils.get_all_data(test_path)
+def getAvgTestError(model, test_path):
+    all_ims, all_labels = helenUtils.getAllData(test_path)
     preds = model.predict(np.array(all_ims), batch_size=len(all_ims))
     error = 0
     for i in range(len(preds)):
