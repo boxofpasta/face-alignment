@@ -92,29 +92,35 @@ def coordsToHeatmaps(coords, elms_per_side, stddev=0.01):
         heatmaps.append(heatmap)
     return heatmaps
 
-def visualizeLabels(im, coords):
+def visualizeLabels(im, coords, special_indices=[]):
     """
     Parameters
     ----------
     im : 
-        the 2D array image.
+        The 2D array image.
     coords : 
-        the coordinates to draw e.g [[21, 10]].
+        The coordinates to draw e.g [[21, 10]].
+    special_indices:
+        An array of indices. Coordinates with these indices will have a red color
     """
+    special_indices = set(special_indices)
     fig, ax = plt.subplots(1)
     ax.set_aspect('equal')
     ax.imshow(im)
-    radius = 0.001 * len(im)
+    radius = 0.003 * len(im)
     for i in range(0, len(coords)):
         x = coords[i][0]
         y = coords[i][1]
-        circ = Circle((x, y), radius)
+        if i in special_indices:
+            circ = Circle((x, y), radius, color='red')
+        else:
+            circ = Circle((x, y), radius)
         ax.add_patch(circ)
 
     plt.show()
 
 
-def inform_progress(iter, total):
+def informProgress(iter, total):
     milestone = max(total / 100, 1)
     if iter != 0 and iter % milestone == 0:
         sys.stdout.write('\r    ' + str(round(100.0 * float(iter) / total, 1)) + '% complete')

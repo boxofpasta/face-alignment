@@ -39,8 +39,7 @@ def trySavedFullyConnected(path):
         label *= 224
         utils.visualizeLabels(im, label)
 
-def visualizeHeatmaps():
-    fnames = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
+def visualizeHeatmaps(fnames=[]):
     pdfs = utils.getGaussians(10000, 56)
 
     for fname in fnames:
@@ -52,9 +51,7 @@ def visualizeHeatmaps():
         plt.imshow(summed)
         plt.show()
 
-def visualizeSamples(model=None):
-    fnames = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
-    pdfs = utils.getGaussians(10000, 56)
+def visualizeSamples(fnames, model=None, special_indices=[]):
     for fname in fnames:
         im = np.load('data/train/ims/' + fname)
 
@@ -65,8 +62,14 @@ def visualizeSamples(model=None):
 
         label = np.reshape(label, (194, 2))
         label *= 224
-        utils.visualizeLabels(im, label)
+        utils.visualizeLabels(im, label, special_indices)
 
+def queryCoordPositions():
+    samples = ['13602254_1.npy']
+    while True:
+        val = int(raw_input('enter indices to draw red up to: '))
+        indices = [i for i in range(val+1)]
+        visualizeSamples(samples, special_indices=indices)
 
 def getAvgTestError(model, test_path):
     all_ims, all_labels = helenUtils.getAllData(test_path)
@@ -83,18 +86,18 @@ def getAvgTestError(model, test_path):
     return error / len(preds)
 
 if __name__ == '__main__':
+    #samples = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
+    #visualizeSamples(samples)
     #model = get_saved_model('models/fully_connected_v2.h5')
     #print get_avg_test_error(model, 'data/test')
-
-    visualize_samples()
     #try_saved_model('models/fully_connected_v1.h5')
     #model = get_saved_model('models/tmp/fully_conv.h5')
-    """factory = ModelFactory.ModelFactory()
-    model = factory.getFullyConvolutional()
-    batch_generator = BatchGenerator.BatchGenerator('data/train', factory.mask_side_len)
+    factory = ModelFactory.ModelFactory()
+    model = factory.getBboxRegressor()
+    batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
     model.fit_generator(generator=batch_generator.generate(),
                         steps_per_epoch=batch_generator.steps_per_epoch,
                         epochs=10)
 
-    model.save('models/tmp/fully_conv.h5')"""
+    model.save('models/tmp/bbox.h5')
     #visualize_samples()

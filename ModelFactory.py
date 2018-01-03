@@ -19,7 +19,18 @@ class ModelFactory:
         self.im_width = 224
         self.im_height = 224
         self.num_coords = 194
-        self.mask_side_len = 56
+        self.heatmap_side_len = 56
+
+    def getSaved(path):
+        print 'Loading model ...'
+        model = load_model(path, custom_objects={
+            'squaredDistanceLoss': self.squaredDistanceLoss,
+            'heatmapSoftmaxLoss': self.heatmapSoftmaxLoss,
+            'relu6': mobilenet.relu6,
+            'DepthwiseConv2D': mobilenet.DepthwiseConv2D
+        })
+        print 'COMPLETE'
+        return model
 
     """ 
     ----------------------------------------------------------------
@@ -37,6 +48,16 @@ class ModelFactory:
         x = Dense(units=2 * self.num_coords, activation='linear')(x)
         model = Model(inputs=base_model.input, outputs=x)
 
+        model.compile(loss=self.squaredDistanceLoss, optimizer='adam')
+        return model
+
+    def getBboxRegressor(self):
+        in_shape = (self.im_width, self.im_height, 3)
+        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape)
+        x = base_model.output
+        x = Flatten()(x)
+        x = Dense(units=4, activation='linear')(x)
+        model = Model(inputs=base_model.input, outputs=x)
         model.compile(loss=self.squaredDistanceLoss, optimizer='adam')
         return model
 
@@ -64,44 +85,16 @@ class ModelFactory:
         model.compile(loss=self.heatmapSoftmaxLoss, optimizer='adam')
         return model
 
-
-    """ 
-    ----------------------------------------------------------------
-        Loading saved models.
-    ----------------------------------------------------------------
-    """
-    def getFullyConvolutionalSaved(self):
-        print 'Loading model ...'
-        model = load_model(path, custom_objects={
-            'heatmapSoftmaxLoss': self.heatmapSoftmaxLoss,
-            'relu6': mobilenet.relu6,
-            'DepthwiseConv2D': mobilenet.DepthwiseConv2D})
-        print 'COMPLETE'
-        return model
-
-    def getFullyConnectedSaved(self):
-        print 'Loading model ...'
-        model = load_model(path, custom_objects={
-            'squaredDistanceLoss': self.squaredDistanceLoss,
-            'relu6': mobilenet.relu6,
-            'DepthwiseConv2D': mobilenet.DepthwiseConv2D})
-        print 'COMPLETE'
-        return model
-
     """ 
     ----------------------------------------------------------------
         Helpers to build custom tensorflow loss functions.
     ----------------------------------------------------------------
     """
-
     def heatmapSoftmaxLoss(self, y_true, y_pred):
-        y_true = tf.reshape(y_true, (-1, self.mask_side_len * self.mask_side_len, self.num_coords))
-        y_pred = tf.reshape(y_pred, (-1, self.mask_side_len * self.mask_side_len, self.num_coords))
+        y_true = tf.reshape(y_true, (-1, self.heatmap_side_len * self.heatmap_side_len, self.num_coords))
+        y_pred = tf.reshape(y_pred, (-1, self.heatmap_side_len * self.heatmap_side_len, self.num_coords))
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred, dim=1)
         return tf.reduce_sum(cross_entropy)
 
     def squaredDistanceLoss(self, y_true, y_pred):
-        y_true = tf.reshape(y_true, (-1, self.num_coords, 2))
-        y_pred = tf.reshape(y_pred, (-1, self.num_coords, 2))
-        sqrd_diff = tf.reduce_sum(tf.square(y_true - y_pred), axis=2)
-        return tf.sum(sqrd_diff)
+        return tf.reduce_sum(tf.square(y_true - y_pred))

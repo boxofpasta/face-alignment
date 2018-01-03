@@ -97,15 +97,23 @@ class BatchGenerator:
 class HeatmapBatchGenerator(BatchGenerator):
 
     def __init__(self, train_path, heatmap_sidelen, val_path=None, read_all=False):
-        BatchGenerator.__init__(train_path, val_path, read_all)
+        BatchGenerator.__init__(self, train_path, val_path, read_all)
 
         # pdfs cache for speeding up heatmap expansions (makes a big difference in training times)
         self.heatmap_sidelen = heatmap_sidelen
         self.pdfs = utils.getGaussians(10000, self.heatmap_sidelen)
 
     def getLabel(self, coords):
-        coords = np.reshape(coords, (self.num_coords, 2))
+        """coords = np.reshape(coords, (self.num_coords, 2))
         heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
-        return heatmap
+        return heatmap"""
+        # eyepoints start [134, 153]
+        coords = np.reshape(coords, (self.num_coords, 2))
+        eyecoords = coords[134:154]
 
+        # bbox
+        x_vals = eyecoords[:,0]
+        y_vals = eyecoords[:,1]
+        bbox = [np.min(x_vals), np.min(y_vals), np.max(x_vals), np.max(y_vals)]
+        return bbox

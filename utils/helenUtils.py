@@ -77,9 +77,9 @@ def processData(props, targ_im_len, sample_names=None):
                 im, label = resizePair(ims[name], labels[name], targ_im_len, targ_im_len)
                 labels[name] = normalizeCoords(label, targ_im_len, targ_im_len)
                 ims[name] = im
-            utils.inform_progress(iter, len(ims))
+            utils.informProgress(iter, len(ims))
             iter += 1
-        utils.inform_progress(1,1)
+        utils.informProgress(1,1)
     else:
         print('\n\nNo target dimension provided, not resizing.')
 
@@ -110,10 +110,10 @@ def serializeData(ims, labels, npy_path):
         im = ims[name]
         np.save(npy_path + '/ims/' + name + '.npy', im)
         np.save(npy_path + '/labels/' + name + '.npy', labels[name])
-        utils.inform_progress(iter, len(ims))
+        utils.informProgress(iter, len(ims))
         iter += 1
 
-    utils.inform_progress(1,1)
+    utils.informProgress(1,1)
     print('\n')
     with open(npy_path + '/names.json', 'wb') as fp:
         json.dump(list(names_set), fp)
@@ -185,8 +185,8 @@ def read_images(path, extension, sample_names=None):
 
     for i in range(0, len(sample_names)):
         ims[sample_names[i]] = scipy.misc.imread(path + '/' + sample_names[i] + extension)
-        utils.inform_progress(i, len(sample_names))
-    utils.inform_progress(1, 1)
+        utils.informProgress(i, len(sample_names))
+    utils.informProgress(1, 1)
     return ims
 
 
