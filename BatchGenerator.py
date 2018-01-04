@@ -14,12 +14,12 @@ along with any subclasses that need to do more advanced processing of labels.
 class BatchGenerator:
     """
     This class assumes a specific directory and file structure for your data:
-        Each image needs to be saved as a .npy file in path train_path/ims.
-        Each label or mask needs to be saved as a .npy file in path train_path/labels.
+        Each image needs to be saved as a .npy file in path path/ims.
+        Each label or mask needs to be saved as a .npy file in path path/coords.
         Labels and images that correspond to each other must have the same name (excluding file extension).
-        The names of all samples (training pairs) must be in train_path/names.json.
+        The names of all samples (training pairs) must be in path/names.json.
     """
-    def __init__(self, train_path, val_path=None, read_all=False):
+    def __init__(self, path, val_path=None, read_all=False):
         """
         Parameters
         ----------
@@ -34,9 +34,9 @@ class BatchGenerator:
         self.all_ims = None
         self.all_labels = None
 
-        self.name_path = train_path + '/names.json'
-        self.train_ims_path = train_path + '/ims'
-        self.train_labels_path = train_path + '/labels'
+        self.name_path = path + '/names.json'
+        self.ims_path = path + '/ims'
+        self.coords_path = path + '/coords'
         self.im_extension = '.npy'
         self.label_extension = '.npy'
         
@@ -45,17 +45,31 @@ class BatchGenerator:
 
         self.steps_per_epoch = len(self.names) / self.batch_size
         if read_all == True:
-            self.all_ims, self.all_labels = helenUtils.getAllData(train_path)
+            all_ims, all_coords = helenUtils.getAllData(path)
+            self.all_ims = all_ims
+            self.all_labels = [self.getLabel(coords) for coords in all_coords]
             raise NameError('hey programmer, labels need to be converted to heatmaps')
             """
             self.all_ims = []
             self.all_labels = []
             for name in self.names:
-                im_path = self.train_ims_path + '/' + name + self.im_extension
-                label_path = self.train_labels_path + '/' + name + self.label_extension
+                im_path = self.ims_path + '/' + name + self.im_extension
+                label_path = self.labels_path + '/' + name + self.label_extension
                 self.all_ims.append(np.load(im_path))
                 self.all_labels.append(np.load(label_path).flatten())
             """
+
+    def getPair(self, sample_name):
+        im = np.load(self.ims_path + '/' + sample_name + '.npy')
+        label = self.getLabel(np.load(self.coords_path + '/' + sample_name + '.npy'))  
+        return im, label    
+
+    def getAllPairs(self):
+        if self.all_ims == None or self.all_labels == None:
+            all_ims, all_coords = helenUtils.getAllData(self.name_path)
+            self.all_ims = all_ims
+            self.all_labels = [self.getLabel(coords) for coords in all_coords]
+        return self.all_ims, self.all_labels
 
     def numTotalSamples(self):
         return len(self.names)
@@ -88,16 +102,16 @@ class BatchGenerator:
                     X = []
                     Y = []
                     for name in cur_names:
-                        X.append(np.load(self.train_ims_path + '/' + name + self.im_extension))
-                        coords = np.load(self.train_labels_path + '/' + name + self.label_extension)
+                        X.append(np.load(self.ims_path + '/' + name + self.im_extension))
+                        coords = np.load(self.coords_path + '/' + name + self.label_extension)
                         Y.append(self.getLabel(coords))
                 yield np.array(X), np.array(Y)
 
 
 class HeatmapBatchGenerator(BatchGenerator):
 
-    def __init__(self, train_path, heatmap_sidelen, val_path=None, read_all=False):
-        BatchGenerator.__init__(self, train_path, val_path, read_all)
+    def __init__(self, path, heatmap_sidelen, val_path=None, read_all=False):
+        BatchGenerator.__init__(self, path, val_path, read_all)
 
         # pdfs cache for speeding up heatmap expansions (makes a big difference in training times)
         self.heatmap_sidelen = heatmap_sidelen
@@ -115,5 +129,5 @@ class HeatmapBatchGenerator(BatchGenerator):
         # bbox
         x_vals = eyecoords[:,0]
         y_vals = eyecoords[:,1]
-        bbox = [np.min(x_vals), np.min(y_vals), np.max(x_vals), np.max(y_vals)]
+        bbox = np.array([np.min(x_vals), np.min(y_vals), np.max(x_vals), np.max(y_vals)])
         return bbox

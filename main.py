@@ -39,11 +39,11 @@ def trySavedFullyConnected(path):
         label *= 224
         utils.visualizeLabels(im, label)
 
-def visualizeHeatmaps(fnames=[]):
+def visualizeHeatmaps(sample_names=[]):
     pdfs = utils.getGaussians(10000, 56)
 
-    for fname in fnames:
-        coords = np.load('data/train/labels/' + fname)
+    for sample_name in sample_names:
+        coords = np.load('data/train/labels/' + sample_name + '.npy')
         coords = np.reshape(coords, (194, 2))
         heatmap = utils.coordsToHeatmapsFast(coords, pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
@@ -51,12 +51,12 @@ def visualizeHeatmaps(fnames=[]):
         plt.imshow(summed)
         plt.show()
 
-def visualizeSamples(fnames, model=None, special_indices=[]):
-    for fname in fnames:
-        im = np.load('data/train/ims/' + fname)
+def visualizeSamples(sample_names, model=None, special_indices=[]):
+    for sample_name in sample_names:
+        im = np.load('data/train/ims/' + sample_name + '.npy')
 
         if model == None:
-            label = np.load('data/train/labels/' + fname)
+            label = np.load('data/train/labels/' + sample_name + '.npy')
         else:
             label = model.predict(np.array([im]), batch_size=1)
 
@@ -65,7 +65,7 @@ def visualizeSamples(fnames, model=None, special_indices=[]):
         utils.visualizeLabels(im, label, special_indices)
 
 def queryCoordPositions():
-    samples = ['13602254_1.npy']
+    samples = ['13602254_1']
     while True:
         val = int(raw_input('enter indices to draw red up to: '))
         indices = [i for i in range(val+1)]
@@ -76,28 +76,34 @@ def getAvgTestError(model, test_path):
     preds = model.predict(np.array(all_ims), batch_size=len(all_ims))
     error = 0
     for i in range(len(preds)):
-        coords_shape = (194, 2)
-        label = np.reshape(all_labels[i], coords_shape)
-        pred = np.reshape(preds[i], coords_shape)
-
         # compute euclidean distance squared sum for all points
         error += np.sum(np.square(pred - label))
 
     return error / len(preds)
 
 if __name__ == '__main__':
-    #samples = ['13602254_1.npy', '2908549_1.npy', '100032540_1.npy', '1691766_1.npy', '11564757_2.npy', '110886318_1.npy']
+    samples = ['13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
+    
     #visualizeSamples(samples)
     #model = get_saved_model('models/fully_connected_v2.h5')
     #print get_avg_test_error(model, 'data/test')
     #try_saved_model('models/fully_connected_v1.h5')
     #model = get_saved_model('models/tmp/fully_conv.h5')
+    
     factory = ModelFactory.ModelFactory()
-    model = factory.getBboxRegressor()
+    #model = factory.getBboxRegressor()
+    model = factory.getSaved('models/bbox_lite_loss_scaled.h5')
     batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
-    model.fit_generator(generator=batch_generator.generate(),
-                        steps_per_epoch=batch_generator.steps_per_epoch,
-                        epochs=10)
 
-    model.save('models/tmp/bbox.h5')
+    for sample in samples:
+        im, label = batch_generator.getPair(sample)
+        pred = np.squeeze(model.predict(np.array([im]), batch_size=1))
+        utils.visualizeBboxes(im, [224 * pred, 224 * label])
+        #utils.visualizeBboxes(im, [224 * label])
+
+    """model.fit_generator(generator=batch_generator.generate(),
+                        steps_per_epoch=batch_generator.steps_per_epoch,
+                        epochs=240)
+
+    model.save('models/tmp/bbox_lite_iou.h5')"""
     #visualize_samples()

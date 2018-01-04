@@ -6,6 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from matplotlib.patches import Circle
+import matplotlib.lines as mlines
 
 def isNumber(s):
     try:
@@ -117,6 +118,25 @@ def visualizeLabels(im, coords, special_indices=[]):
             circ = Circle((x, y), radius)
         ax.add_patch(circ)
 
+    plt.show()
+
+def visualizeBboxes(im, boxes):
+    """
+    Parameters
+    ----------
+    boxes:
+        Each box should have [left, top, right, bottom].
+    """
+    fig, ax = plt.subplots(1)
+    ax.set_aspect('equal')
+    ax.imshow(im)
+    for i in range(len(boxes)):
+        color = (1.0, float(i) / len(boxes), 0.0)
+        box = boxes[i]
+        ax.plot([box[0], box[2]], [box[1], box[1]], '-', color=color)
+        ax.plot([box[2], box[2]], [box[1], box[3]], '-', color=color)
+        ax.plot([box[2], box[0]], [box[3], box[3]], '-', color=color)
+        ax.plot([box[0], box[0]], [box[3], box[1]], '-', color=color)
     plt.show()
 
 
