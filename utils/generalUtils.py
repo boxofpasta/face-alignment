@@ -120,6 +120,48 @@ def visualizeLabels(im, coords, special_indices=[]):
 
     plt.show()
 
+def getBbox(coords):
+    coords = np.reshape(coords, (-1, 2))
+    x_vals = coords[:,0]
+    y_vals = coords[:,1]
+    bbox = np.array([np.min(x_vals), np.min(y_vals), np.max(x_vals), np.max(y_vals)])
+    return bbox
+
+def getRandomlyExpandedBbox(bbox, ratio_low, ratio_high):
+    """
+    Internally uses getExpandedBbox after randomly sampling for a ratio (from a uniform distribution),
+    done independently for width and height.
+    
+    Parameters
+    ----------
+    ratio_low: 
+        Lower bound of the uniform distribution that we are sampling from.
+    """
+    ratio_x, ratio_y = np.random.uniform(ratio_low, ratio_high, 2)
+    return getExpandedBbox(bbox, ratio_x, ratio_y)
+    
+
+def getExpandedBbox(bbox, ratio_x, ratio_y):
+    """
+    Parameters
+    ----------
+    bbox: 
+        Order should be: left, top, right, bottom. Right > left, bottom > top.
+    ratio_x: 
+        E.g value of 1.0 means 100% of max(width, height) added as padding.
+    """
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    max_len = max(width, height)
+    x_pad = 0.5 * ratio_x * max_len
+    y_pad = 0.5 * ratio_y * max_len
+    return np.array([
+        bbox[0] - x_pad,
+        bbox[1] - y_pad,
+        bbox[2] + x_pad,
+        bbox[3] + y_pad
+    ])
+
 def visualizeBboxes(im, boxes):
     """
     Parameters

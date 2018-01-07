@@ -74,7 +74,8 @@ def processData(props, targ_im_len, sample_names=None):
         iter = 0
         for name in ims:
             if targ_im_len != -1:
-                im, label = resizePair(ims[name], labels[name], targ_im_len, targ_im_len)
+                im, label = cropPair(ims[name], labels[name])
+                im, label = resizePair(im, label, targ_im_len, targ_im_len)
                 labels[name] = normalizeCoords(label, targ_im_len, targ_im_len)
                 ims[name] = im
             utils.informProgress(iter, len(ims))
@@ -132,11 +133,23 @@ def resizePair(im, label, targ_width, targ_height):
     scale_x = float(targ_width) / cur_width
     scale_y = float(targ_height) / cur_height
     for coords in label:
-        coords[0] *= scale_x
-        coords[1] *= scale_y
+        coords[0] = (coords[0] - 1) * scale_x
+        coords[1] = (coords[1] - 1) * scale_y
     resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_CUBIC)
     return [resized, label]
 
+def cropPair(im, label):
+    label = np.reshape(label, (-1, 2))
+    bbox = utils.getBbox(label)
+    bbox = utils.getRandomlyExpandedBbox(bbox, 0.1, 0.3)
+    label[:,0] -= bbox[0]
+    label[:,1] -= bbox[1]
+    l = int(max(0, bbox[0]))
+    r = int(min(len(im[0]), bbox[2]+1))
+    t = int(max(0, bbox[1]))
+    b = int(min(len(im), bbox[3]+1))
+    im = im[t:b, l:r]
+    return [im, label]
 
 def getOrdered(ims, labels):
     """

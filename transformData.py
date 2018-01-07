@@ -2,22 +2,22 @@ import os
 import sys
 import scipy.misc
 import numpy as np
-#import matplotlib
-#matplotlib.use('Qt5Agg')
-#import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Qt5Agg')
+import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
-#from matplotlib.patches import Circle
+from matplotlib.patches import Circle
 import json
 
 
 """ Run to update the .npy files (resized images and labels) from the downloaded dataset. """
 
-transform_train = False
-transform_test = True
+transform_train = True
+transform_test = False
 
 # takes only a small sample for testing purposes
-use_samples = False
+use_samples = True
 targ_im_len = 224
 
 if transform_test:
@@ -30,8 +30,8 @@ if transform_test:
 
 if transform_train:
 
-    # for serializing a smaller dataset
-    use_small = False
+    # for serializing just the helen_1 folder
+    use_small = True
 
     if use_small:
         npy_path = 'data/train_small'
@@ -44,7 +44,7 @@ if transform_train:
         train_paths = ['downloads/helen_1', 'downloads/helen_2', 'downloads/helen_3', 'downloads/helen_4', 'downloads/helen_5']
 
     if use_samples:
-        sample_names = ['11564757_2', '1240746154_1', '1165647416_1', '1691766_1']
+        sample_names = ['100466187_1', '11564757_2', '1240746154_1', '1165647416_1', '1691766_1']
     else:
         sample_names = None
 
@@ -63,9 +63,9 @@ if use_samples:
         else:
             factor = targ_im_len
         label = np.load(npy_path + '/labels/' + name + '.npy')
-        for coord in label:
+        """for coord in label:
             coord[0] -= 1
-            coord[1] -= 1
+            coord[1] -= 1"""
         label *= factor
         utils.visualizeLabels(im, label)
 

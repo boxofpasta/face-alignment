@@ -72,17 +72,77 @@ def queryCoordPositions():
         visualizeSamples(samples, special_indices=indices)
 
 def getAvgTestError(model, test_path):
-    all_ims, all_labels = helenUtils.getAllData(test_path)
-    preds = model.predict(np.array(all_ims), batch_size=len(all_ims))
-    error = 0
-    for i in range(len(preds)):
-        # compute euclidean distance squared sum for all points
-        error += np.sum(np.square(pred - label))
+    batch_generator = BatchGenerator.BatchGenerator(test_path, read_all=True)
+    all_ims = batch_generator.all_ims
+    all_labels = batch_generator.all_labels
+    loss = model.evaluate(x=all_ims, y=all_labels)
+    return loss
 
-    return error / len(preds)
+# https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_gui/py_video_display/py_video_display.html
+def videoTestBboxModel(model):
+    cap = cv2.VideoCapture(0)
+    num_frames = 0
+    start = time.clock()
+    im_len = 224
+    while(True):
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        frame = cv2.resize(frame, (im_len, im_len), interpolation=cv2.INTER_CUBIC)
+        pred = im_len * np.squeeze(model.predict(np.array([frame]), batch_size=1))
+        cv2.rectangle(frame, (pred[0],pred[1]), (pred[2],pred[3]), (0,0,255))
+
+        # Display the resulting frame
+        cv2.imshow('frame',frame)
+        num_frames += 1
+        if num_frames % 50 == 0:
+            print 'Fps : ' + str(num_frames / (time.clock() - start))
+            num_frames = 0
+            start = time.clock()
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # When everything done, release the capture
+    cap.release()
+    cv2.destroyAllWindows()
+
+def videoTestBboxHaarCascade():
+    cap = cv2.VideoCapture(0)
+    num_frames = 0
+    start = time.clock()
+    im_len = 224
+    face_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_frontalface_default.xml')
+    eye_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_eye.xml')
+    while(True):
+
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        frame = cv2.resize(frame, (im_len, im_len), interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        for (x,y,w,h) in faces:
+            cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
+            roi_gray = gray[y:y+h, x:x+w]
+            roi_color = frame[y:y+h, x:x+w]
+            eyes = eye_cascade.detectMultiScale(roi_gray)
+            for (ex,ey,ew,eh) in eyes:
+                cv2.rectangle(roi_color,(ex,ey),(ex+ew,ey+eh),(0,255,0),2)
+
+        # Display the resulting frame
+        cv2.imshow('frame',frame)
+        num_frames += 1
+        if num_frames % 50 == 0:
+            print 'Fps : ' + str(num_frames / (time.clock() - start))
+            num_frames = 0
+            start = time.clock()
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # When everything done, release the capture
+    cap.release()
+    cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    samples = ['13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
+    samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
     #visualizeSamples(samples)
     #model = get_saved_model('models/fully_connected_v2.h5')
@@ -90,20 +150,40 @@ if __name__ == '__main__':
     #try_saved_model('models/fully_connected_v1.h5')
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
-    factory = ModelFactory.ModelFactory()
+    #factory = ModelFactory.ModelFactory()
     #model = factory.getBboxRegressor()
-    model = factory.getSaved('models/bbox_lite_loss_scaled.h5')
-    batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
+    #model = factory.getSaved('models/bbox_lite_loss_scaled.h5')
+    #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
+    """
     for sample in samples:
         im, label = batch_generator.getPair(sample)
         pred = np.squeeze(model.predict(np.array([im]), batch_size=1))
         utils.visualizeBboxes(im, [224 * pred, 224 * label])
-        #utils.visualizeBboxes(im, [224 * label])
+    """
 
-    """model.fit_generator(generator=batch_generator.generate(),
+    """
+    model.fit_generator(generator=batch_generator.generate(),
                         steps_per_epoch=batch_generator.steps_per_epoch,
                         epochs=240)
 
-    model.save('models/tmp/bbox_lite_iou.h5')"""
+    model.save('models/tmp/bbox_lite_iou.h5')
+    """
+
+    """
+    for fname in os.listdir('downloads/samples'):
+        im = scipy.misc.imread('downloads/samples/' + fname)
+        im = cv2.resize(im, (224, 224), interpolation=cv2.INTER_CUBIC)
+
+        # alpha channel needs to be cutoff
+        if im.shape[2] > 3:
+            im = im[:,:,:3]
+
+        pred = np.squeeze(model.predict(np.array([im]), batch_size=1))
+        expanded = utils.getExpandedBbox(pred, 0.7, 0.7)
+        utils.visualizeBboxes(im, [224 * expanded])
+    """
+
+    #videoTestBboxModel(model)
+    videoTestBboxHaarCascade()
     #visualize_samples()

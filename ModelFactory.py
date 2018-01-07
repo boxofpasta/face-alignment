@@ -15,10 +15,10 @@ import tensorflow as tf
 
 class ModelFactory:
 
-    def __init__(self):
+    def __init__(self, num_coords):
         self.im_width = 224
         self.im_height = 224
-        self.num_coords = 194
+        self.num_coords = num_coords
         self.heatmap_side_len = 56
         self.epsilon = 1E-5
 
@@ -28,7 +28,8 @@ class ModelFactory:
             'squaredDistanceLoss': self.squaredDistanceLoss,
             'heatmapSoftmaxLoss': self.heatmapSoftmaxLoss,
             'iouLoss': self.iouLoss,
-            'scaledSquaredDistanceLoss': self.scaledSquaredDistanceLoss,
+            'scaledSquaredDistanceLoss': self.percentageBboxDistanceLoss,
+            'percentageBboxDistanceLoss': self.percentageBboxDistanceLoss,
             'relu6': mobilenet.relu6,
             'DepthwiseConv2D': mobilenet.DepthwiseConv2D
         })
@@ -96,41 +97,97 @@ class ModelFactory:
         Helpers to build custom tensorflow loss functions.
     ----------------------------------------------------------------
     """
-    def heatmapSoftmaxLoss(self, label, pred):
-        label = tf.reshape(label, (-1, self.heatmap_side_len * self.heatmap_side_len, self.num_coords))
-        pred = tf.reshape(pred, (-1, self.heatmap_side_len * self.heatmap_side_len, self.num_coords))
-        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=label, logits=pred, dim=1)
+    def heatmapSoftmaxLoss(self, labels, preds):
+        labels = tf.reshape(labels, (-1, self.heatmap_side_len * self.heatmap_side_len, self.num_coords))
+        preds = tf.reshape(preds, (-1, self.heatmap_side_len * self.heatmap_side_len, self.num_coords))
+        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labelss=labels, logits=preds, dim=1)
         return tf.reduce_sum(cross_entropy)
 
-    def squaredDistanceLoss(self, label, pred):
-        return tf.reduce_sum(tf.square(label - pred))
+    def squaredDistanceLoss(self, labels, preds):
+        return tf.reduce_sum(tf.square(labels - preds))
 
-    def iouLoss(self, label, pred):
+    def iouLoss(self, labels, preds):
         """
         Training does not converge well for this loss. There might be an error somewhere.
         """
         iouWeight = 0.9999
-        distanceLoss = self.squaredDistanceLoss(label, pred)
-        intersection_dx = tf.maximum(tf.minimum(pred[:,2], label[:,2]) - tf.maximum(pred[:,0], label[:,0]), 0)
-        intersection_dy = tf.maximum(tf.minimum(pred[:,3], label[:,3]) - tf.maximum(pred[:,1], label[:,1]), 0)
+        distanceLoss = self.squaredDistanceLoss(labels, preds)
+        intersection_dx = tf.maximum(tf.minimum(preds[:,2], labels[:,2]) - tf.maximum(preds[:,0], labels[:,0]), 0)
+        intersection_dy = tf.maximum(tf.minimum(preds[:,3], labels[:,3]) - tf.maximum(preds[:,1], labels[:,1]), 0)
         
         intersection_area = intersection_dx * intersection_dy
-        pred_area = tf.maximum(pred[:,2] - pred[:,0], 0) * tf.maximum(pred[:,3] - pred[:,1], 0)
-        true_area = tf.maximum(label[:,2] - label[:,0], 0) * tf.maximum(label[:,3] - label[:,1], 0)
-        union = pred_area + true_area - intersection_area
+        preds_area = tf.maximum(preds[:,2] - preds[:,0], 0) * tf.maximum(preds[:,3] - preds[:,1], 0)
+        true_area = tf.maximum(labels[:,2] - labels[:,0], 0) * tf.maximum(labels[:,3] - labels[:,1], 0)
+        union = preds_area + true_area - intersection_area
         return (1.0 - iouWeight) * distanceLoss - iouWeight * tf.reduce_sum(intersection_area / (union + self.epsilon))
     
-    def scaledSquaredDistanceLoss(self, label, pred):
+    def scaledSquaredDistanceLoss(self, labels, preds):
         """
-        y and x distances scaled by height / width of the ground truth box.
+        Parameters
+        ----------
+        labels: 
+            Should have shape (batch_size, num_coords, 2)
         """
-        widths = tf.expand_dims(label[:,2] - label[:,0], axis=1)
-        heights = tf.expand_dims(label[:,3] - label[:,1], axis=1)
+        preds = tf.reshape(preds, (-1, self.num_coords, 2))
+        x_coords = labels[:,:,0]
+        y_coords = labels[:,:,1]
+        widths = tf.reduce_max(x_coords, axis=1) - tf.reduce_min(x_coords, axis=1)
+        heights = tf.reduce_max(y_coords, axis=1) - tf.reduce_min(y_coords, axis=1)
         
         # [widths, heights, widths, heights]
         divisor = tf.concat([widths, heights], axis=1)
         divisor = tf.concat([divisor, divisor], axis=1)
 
-        dist_squared = tf.square(label - pred)
+        dist_squared = tf.square(labels - preds)
         scaled = dist_squared / divisor
         return tf.reduce_sum(dist_squared)
+
+    def scaledSquaredDistanceLossNp(self, labels, preds):
+        """
+        Just a port of scaledSquaredDistanceLoss for numpy.
+        """
+        preds = np.reshape(preds, (-1, self.num_coords, 2))
+        x_coords = labels[:,:,0]
+        y_coords = labels[:,:,1]
+        widths = np.max(x_coords, axis=1) - np.max(x_coords, axis=1)
+        heights = np.max(y_coords, axis=1) - np.min(y_coords, axis=1)
+        
+        # [widths, heights, widths, heights]
+        divisor = np.concatenate([widths, heights], axis=1)
+        divisor = np.concatenate([divisor, divisor], axis=1)
+
+        dist_squared = np.square(labels - preds)
+        scaled = dist_squared / divisor
+        return np.sum(dist_squared)
+
+    def scaledSquaredDistanceLossBbox(self, labels, preds):
+        """
+        Labels are bboxes in this case.
+        y and x distances scaled by height / width of the ground truth box.
+        """
+        widths = tf.expand_dims(labels[:,2] - labels[:,0], axis=1)
+        heights = tf.expand_dims(labels[:,3] - labels[:,1], axis=1)
+        
+        # [widths, heights, widths, heights]
+        divisor = tf.concat([widths, heights], axis=1)
+        divisor = tf.concat([divisor, divisor], axis=1)
+
+        dist_squared = tf.square(labels - preds)
+        scaled = dist_squared / divisor
+        return tf.reduce_sum(dist_squared)
+
+    def percentageBboxDistanceLoss(self, labels, preds):
+        """
+        y and x distances scaled by height / width of the ground truth box.
+        """
+        widths = tf.expand_dims(labels[:,2] - labels[:,0], axis=1)
+        heights = tf.expand_dims(labels[:,3] - labels[:,1], axis=1)
+        
+        # [widths, heights, widths, heights]
+        divisor = tf.concat([widths, heights], axis=1)
+        divisor = tf.concat([divisor, divisor], axis=1)
+
+        dist_squared = tf.square(labels - preds)
+        scaled = dist_squared / tf.square(divisor)
+        return tf.reduce_sum(dist_squared)
+

@@ -19,16 +19,20 @@ class BatchGenerator:
         Labels and images that correspond to each other must have the same name (excluding file extension).
         The names of all samples (training pairs) must be in path/names.json.
     """
-    def __init__(self, path, val_path=None, read_all=False):
+    def __init__(self, path, sparse_coords=True, val_path=None, read_all=False):
         """
         Parameters
         ----------
         read_all: 
             If True, will read all the .npy files into an array at once. Better for small datasets.
         """
-        self.num_coords = 194
         self.batch_size = 50
         self.names = []
+        self.sparse_coords = sparse_coords
+
+        # essentially taking every self.sparsity points in the original coords
+        self.sparsity = 4.0 
+        self.num_coords = np.ceil(194 / sparsity) if sparse_coords else 194
         
         # filled only if read_all == True
         self.all_ims = None
@@ -47,17 +51,7 @@ class BatchGenerator:
         if read_all == True:
             all_ims, all_coords = helenUtils.getAllData(path)
             self.all_ims = all_ims
-            self.all_labels = [self.getLabel(coords) for coords in all_coords]
-            raise NameError('hey programmer, labels need to be converted to heatmaps')
-            """
-            self.all_ims = []
-            self.all_labels = []
-            for name in self.names:
-                im_path = self.ims_path + '/' + name + self.im_extension
-                label_path = self.labels_path + '/' + name + self.label_extension
-                self.all_ims.append(np.load(im_path))
-                self.all_labels.append(np.load(label_path).flatten())
-            """
+            self.all_labels = [self.getLabel(self.preprocessCoords(coords)) for coords in all_coords]
 
     def getPair(self, sample_name):
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
@@ -73,6 +67,12 @@ class BatchGenerator:
 
     def numTotalSamples(self):
         return len(self.names)
+
+    def preprocessCoords(coords):
+        coords = np.reshape(coords, (-1, 2))
+        if self.sparse_coords:
+            return coords[0::self.sparsity]
+        return coords
 
     def getLabel(self, coords):
         return coords
@@ -104,6 +104,7 @@ class BatchGenerator:
                     for name in cur_names:
                         X.append(np.load(self.ims_path + '/' + name + self.im_extension))
                         coords = np.load(self.coords_path + '/' + name + self.label_extension)
+                        coords = self.preprocessCoords(coords)
                         Y.append(self.getLabel(coords))
                 yield np.array(X), np.array(Y)
 
@@ -123,11 +124,8 @@ class HeatmapBatchGenerator(BatchGenerator):
         heatmap = np.moveaxis(heatmap, 0, -1)
         return heatmap"""
         # eyepoints start [134, 153]
-        coords = np.reshape(coords, (self.num_coords, 2))
-        eyecoords = coords[134:154]
 
-        # bbox
-        x_vals = eyecoords[:,0]
-        y_vals = eyecoords[:,1]
-        bbox = np.array([np.min(x_vals), np.min(y_vals), np.max(x_vals), np.max(y_vals)])
-        return bbox
+        # WARN: there must be 194 coords for this to work
+        coords = np.reshape(coords, (-1, 2))
+        eyecoords = coords[134:154]
+        return utils.getBbox(eyecoords)
