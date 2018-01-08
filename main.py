@@ -158,9 +158,9 @@ if __name__ == '__main__':
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
     factory = ModelFactory.ModelFactory()
-    model = factory.getFullyConnected()
+    #model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
-    #model = factory.getSaved('models/tmp/fully_connected_sparse_025_v2.h5')
+    model = factory.getSaved('models/tmp/fully_connected_sparse_100.h5')
     train_batch_generator = BatchGenerator.BatchGenerator('data/train', factory.coords_sparsity)
     test_batch_generator = BatchGenerator.BatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
@@ -174,7 +174,7 @@ if __name__ == '__main__':
 
     model.fit_generator(generator=train_batch_generator.generate(),
                         steps_per_epoch=train_batch_generator.steps_per_epoch,
-                        epochs=240)
+                        epochs=30)
 
     model.save('models/tmp/fully_connected_sparse_100.h5')
     if notify_training_complete:
