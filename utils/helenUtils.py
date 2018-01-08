@@ -26,6 +26,8 @@ class DatasetProps:
         self.im_path = im_path
         self.label_path = label_path
 
+def getNumCoords(coords_sparsity):
+    return int(np.ceil(194.0 / coords_sparsity))
 
 def getAllData(path):
     """

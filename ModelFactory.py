@@ -15,10 +15,11 @@ import tensorflow as tf
 
 class ModelFactory:
 
-    def __init__(self, num_coords):
+    def __init__(self):
         self.im_width = 224
         self.im_height = 224
-        self.num_coords = num_coords
+        self.coords_sparsity = 4
+        self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
         self.heatmap_side_len = 56
         self.epsilon = 1E-5
 
@@ -46,10 +47,11 @@ class ModelFactory:
 
         """ Mobilenet with the last layer replaced by coordinate regression """
         in_shape = (self.im_width, self.im_height, 3)
-        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape)
+        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape, alpha=1.00)
         x = base_model.output
         x = Flatten()(x)
         x = Dense(units=2 * self.num_coords, activation='linear')(x)
+        x = Reshape((self.num_coords, 2))(x)
         model = Model(inputs=base_model.input, outputs=x)
 
         model.compile(loss=self.squaredDistanceLoss, optimizer='adam')
@@ -121,7 +123,7 @@ class ModelFactory:
         union = preds_area + true_area - intersection_area
         return (1.0 - iouWeight) * distanceLoss - iouWeight * tf.reduce_sum(intersection_area / (union + self.epsilon))
     
-    def scaledSquaredDistanceLoss(self, labels, preds):
+    def percentageDistanceLoss(self, labels, preds):
         """
         Parameters
         ----------
@@ -129,20 +131,17 @@ class ModelFactory:
             Should have shape (batch_size, num_coords, 2)
         """
         preds = tf.reshape(preds, (-1, self.num_coords, 2))
+        labels = tf.reshape(labels, (-1, self.num_coords, 2))
         x_coords = labels[:,:,0]
         y_coords = labels[:,:,1]
-        widths = tf.reduce_max(x_coords, axis=1) - tf.reduce_min(x_coords, axis=1)
-        heights = tf.reduce_max(y_coords, axis=1) - tf.reduce_min(y_coords, axis=1)
-        
-        # [widths, heights, widths, heights]
+        widths = tf.reduce_max(x_coords, axis=1, keep_dims=True) - tf.reduce_min(x_coords, axis=1, keep_dims=True)
+        heights = tf.reduce_max(y_coords, axis=1, keep_dims=True) - tf.reduce_min(y_coords, axis=1, keep_dims=True)
         divisor = tf.concat([widths, heights], axis=1)
-        divisor = tf.concat([divisor, divisor], axis=1)
-
         dist_squared = tf.square(labels - preds)
-        scaled = dist_squared / divisor
-        return tf.reduce_sum(dist_squared)
+        scaled = dist_squared / tf.square(divisor)
+        return tf.reduce_sum(scaled)
 
-    def scaledSquaredDistanceLossNp(self, labels, preds):
+    def percentageDistanceLossNp(self, labels, preds):
         """
         Just a port of scaledSquaredDistanceLoss for numpy.
         """
@@ -151,14 +150,10 @@ class ModelFactory:
         y_coords = labels[:,:,1]
         widths = np.max(x_coords, axis=1) - np.max(x_coords, axis=1)
         heights = np.max(y_coords, axis=1) - np.min(y_coords, axis=1)
-        
-        # [widths, heights, widths, heights]
         divisor = np.concatenate([widths, heights], axis=1)
-        divisor = np.concatenate([divisor, divisor], axis=1)
-
         dist_squared = np.square(labels - preds)
-        scaled = dist_squared / divisor
-        return np.sum(dist_squared)
+        scaled = dist_squared / np.square(divisor)
+        return np.sum(scaled)
 
     def scaledSquaredDistanceLossBbox(self, labels, preds):
         """
@@ -174,7 +169,7 @@ class ModelFactory:
 
         dist_squared = tf.square(labels - preds)
         scaled = dist_squared / divisor
-        return tf.reduce_sum(dist_squared)
+        return tf.reduce_sum(scaled)
 
     def percentageBboxDistanceLoss(self, labels, preds):
         """
@@ -189,5 +184,5 @@ class ModelFactory:
 
         dist_squared = tf.square(labels - preds)
         scaled = dist_squared / tf.square(divisor)
-        return tf.reduce_sum(dist_squared)
+        return tf.reduce_sum(scaled)
 

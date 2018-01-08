@@ -3,4 +3,7 @@ Note that all point coordinates (there are 194) were normalized to be b/w [0, 1]
 
 fully_connected_v1.h5 : 0.00011050
 fully_connected_v2.h5 (fine-tuned on 1/4 of the dataset) : 0.00011460
+fully_connected_sparse_025 : 0.0340840682392
+fully_connected_sparse_100 : 
+
 

@@ -19,7 +19,7 @@ class BatchGenerator:
         Labels and images that correspond to each other must have the same name (excluding file extension).
         The names of all samples (training pairs) must be in path/names.json.
     """
-    def __init__(self, path, sparse_coords=True, val_path=None, read_all=False):
+    def __init__(self, path, coords_sparsity, val_path=None, read_all=False):
         """
         Parameters
         ----------
@@ -28,11 +28,10 @@ class BatchGenerator:
         """
         self.batch_size = 50
         self.names = []
-        self.sparse_coords = sparse_coords
 
         # essentially taking every self.sparsity points in the original coords
-        self.sparsity = 4.0 
-        self.num_coords = np.ceil(194 / sparsity) if sparse_coords else 194
+        self.coords_sparsity = int(coords_sparsity)
+        self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
         
         # filled only if read_all == True
         self.all_ims = None
@@ -68,14 +67,16 @@ class BatchGenerator:
     def numTotalSamples(self):
         return len(self.names)
 
-    def preprocessCoords(coords):
-        coords = np.reshape(coords, (-1, 2))
-        if self.sparse_coords:
-            return coords[0::self.sparsity]
-        return coords
+    def preprocessCoords(self, coords):
+        return coords[0::self.coords_sparsity]
 
     def getLabel(self, coords):
         return coords
+
+    def visualizeBatch(self):
+        for im_batch, labels_batch in self.generate():
+            for i in range(len(im_batch)):
+                utils.visualizeCoords(im_batch[i], len(im_batch[i]) * labels_batch[i])
 
     def generate(self):
         while(True):

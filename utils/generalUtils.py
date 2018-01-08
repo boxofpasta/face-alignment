@@ -93,7 +93,7 @@ def coordsToHeatmaps(coords, elms_per_side, stddev=0.01):
         heatmaps.append(heatmap)
     return heatmaps
 
-def visualizeLabels(im, coords, special_indices=[]):
+def visualizeCoords(im, coords, special_indices=[]):
     """
     Parameters
     ----------

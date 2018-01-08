@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -37,7 +37,7 @@ def trySavedFullyConnected(path):
         label = model.predict(np.array([im]), batch_size=1)
         label = np.reshape(label, (194, 2))
         label *= 224
-        utils.visualizeLabels(im, label)
+        utils.visualizeCoords(im, label)
 
 def visualizeHeatmaps(sample_names=[]):
     pdfs = utils.getGaussians(10000, 56)
@@ -62,7 +62,7 @@ def visualizeSamples(sample_names, model=None, special_indices=[]):
 
         label = np.reshape(label, (194, 2))
         label *= 224
-        utils.visualizeLabels(im, label, special_indices)
+        utils.visualizeCoords(im, label, special_indices)
 
 def queryCoordPositions():
     samples = ['13602254_1']
@@ -71,12 +71,18 @@ def queryCoordPositions():
         indices = [i for i in range(val+1)]
         visualizeSamples(samples, special_indices=indices)
 
-def getAvgTestError(model, test_path):
-    batch_generator = BatchGenerator.BatchGenerator(test_path, read_all=True)
-    all_ims = batch_generator.all_ims
-    all_labels = batch_generator.all_labels
-    loss = model.evaluate(x=all_ims, y=all_labels)
-    return loss
+def getAvgTestError(model, batch_generator):
+    """
+    For all experiments we're using squared euclidean distance as the error metric.
+    """
+    all_ims = np.array(batch_generator.all_ims)
+    all_labels = np.array(batch_generator.all_labels)
+    # for some reason this doesn't work as expected (should be the same as evaluating loss through numpy?)
+    #loss = model.evaluate(x=all_ims, y=all_labels)
+    all_preds = model.predict(np.array(all_ims), batch_size=len(all_ims))
+    error = np.sum(np.square(all_preds - all_labels))
+    error /= (len(all_preds) * batch_generator.num_coords)
+    return error
 
 # https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_gui/py_video_display/py_video_display.html
 def videoTestBboxModel(model):
@@ -142,6 +148,7 @@ def videoTestBboxHaarCascade():
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
+    notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
     #visualizeSamples(samples)
@@ -150,9 +157,12 @@ if __name__ == '__main__':
     #try_saved_model('models/fully_connected_v1.h5')
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
-    #factory = ModelFactory.ModelFactory()
+    factory = ModelFactory.ModelFactory()
+    model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
-    #model = factory.getSaved('models/bbox_lite_loss_scaled.h5')
+    #model = factory.getSaved('models/tmp/fully_connected_sparse_025_v2.h5')
+    train_batch_generator = BatchGenerator.BatchGenerator('data/train', factory.coords_sparsity)
+    test_batch_generator = BatchGenerator.BatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
     """
@@ -162,13 +172,15 @@ if __name__ == '__main__':
         utils.visualizeBboxes(im, [224 * pred, 224 * label])
     """
 
-    """
-    model.fit_generator(generator=batch_generator.generate(),
-                        steps_per_epoch=batch_generator.steps_per_epoch,
+    model.fit_generator(generator=train_batch_generator.generate(),
+                        steps_per_epoch=train_batch_generator.steps_per_epoch,
                         epochs=240)
 
-    model.save('models/tmp/bbox_lite_iou.h5')
-    """
+    model.save('models/tmp/fully_connected_sparse_100.h5')
+    if notify_training_complete:
+        from google.cloud import error_reporting
+        client = error_reporting.Client()
+        client.report('Training complete!')
 
     """
     for fname in os.listdir('downloads/samples'):
@@ -184,6 +196,7 @@ if __name__ == '__main__':
         utils.visualizeBboxes(im, [224 * expanded])
     """
 
+    print getAvgTestError(model, test_batch_generator)
     #videoTestBboxModel(model)
-    videoTestBboxHaarCascade()
+    #videoTestBboxHaarCascade()
     #visualize_samples()

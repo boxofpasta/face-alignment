@@ -3,7 +3,7 @@ import sys
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -17,7 +17,7 @@ transform_train = True
 transform_test = False
 
 # takes only a small sample for testing purposes
-use_samples = True
+use_samples = False
 targ_im_len = 224
 
 if transform_test:
@@ -31,7 +31,7 @@ if transform_test:
 if transform_train:
 
     # for serializing just the helen_1 folder
-    use_small = True
+    use_small = False
 
     if use_small:
         npy_path = 'data/train_small'
@@ -63,10 +63,7 @@ if use_samples:
         else:
             factor = targ_im_len
         label = np.load(npy_path + '/labels/' + name + '.npy')
-        """for coord in label:
-            coord[0] -= 1
-            coord[1] -= 1"""
         label *= factor
-        utils.visualizeLabels(im, label)
+        utils.visualizeCoords(im, label)
 
 #helenUtils.save_data(train_props, 'data/train', 224, append_to_names=False)
