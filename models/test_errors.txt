@@ -7,7 +7,7 @@ fully_connected_v2.h5 (fine-tuned on 1/4 of the dataset) : 0.00011460
 fully_connected_sparse_025 : 0.0340840682392
 fully_connected_sparse_100 : 0.0321483014775
 
-fully_connected_025 : 
+fully_connected_025 : 0.0415233714881
 fully_connected_100 : 
 
 what if more reference points helps convergence?

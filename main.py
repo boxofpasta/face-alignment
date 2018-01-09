@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-#matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -51,18 +51,22 @@ def visualizeHeatmaps(sample_names=[]):
         plt.imshow(summed)
         plt.show()
 
-def visualizeSamples(sample_names, model=None, special_indices=[]):
+def visualizeSamples(folder, sample_names=[], model=None, special_indices=[]):
+    if len(sample_names) == 0:
+        with open(folder + '/names.json') as fp:
+            sample_names = set(json.load(fp))
+
     for sample_name in sample_names:
-        im = np.load('data/train/ims/' + sample_name + '.npy')
+        im = np.load(folder + '/ims/' + sample_name + '.npy')
 
         if model == None:
-            label = np.load('data/train/labels/' + sample_name + '.npy')
+            coords = np.load(folder + '/coords/' + sample_name + '.npy')
         else:
-            label = model.predict(np.array([im]), batch_size=1)
+            coords = model.predict(np.array([im]), batch_size=1)
 
-        label = np.reshape(label, (194, 2))
-        label *= 224
-        utils.visualizeCoords(im, label, special_indices)
+        coords = np.reshape(coords, (-1, 2))
+        coords *= len(im)
+        utils.visualizeCoords(im, coords, special_indices)
 
 def queryCoordPositions():
     samples = ['13602254_1']
@@ -151,37 +155,30 @@ if __name__ == '__main__':
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
-    #visualizeSamples(samples)
+    visualizeSamples('data/test')
     #model = get_saved_model('models/fully_connected_v2.h5')
     #print get_avg_test_error(model, 'data/test')
     #try_saved_model('models/fully_connected_v1.h5')
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
-    factory = ModelFactory.ModelFactory()
-    #model = factory.getFullyConnected()
+    """factory = ModelFactory.ModelFactory()
+    model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
-    model = factory.getSaved('models/tmp/fully_connected_sparse_100.h5')
+    model = factory.getSaved('models/tmp/fully_connected_025.h5')
     train_batch_generator = BatchGenerator.BatchGenerator('data/train', factory.coords_sparsity)
     test_batch_generator = BatchGenerator.BatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
-    """
-    for sample in samples:
-        im, label = batch_generator.getPair(sample)
-        pred = np.squeeze(model.predict(np.array([im]), batch_size=1))
-        utils.visualizeBboxes(im, [224 * pred, 224 * label])
-    """
-
     model.fit_generator(generator=train_batch_generator.generate(),
                         steps_per_epoch=train_batch_generator.steps_per_epoch,
-                        epochs=30)
+                        epochs=60)
 
-    model.save('models/tmp/fully_connected_sparse_100.h5')
+    model.save('models/tmp/fully_connected_025.h5')
     if notify_training_complete:
         from google.cloud import error_reporting
         client = error_reporting.Client()
         client.report('Training complete!')
-
+    """
     """
     for fname in os.listdir('downloads/samples'):
         im = scipy.misc.imread('downloads/samples/' + fname)
@@ -196,7 +193,7 @@ if __name__ == '__main__':
         utils.visualizeBboxes(im, [224 * expanded])
     """
 
-    print getAvgTestError(model, test_batch_generator)
+    #print getAvgTestError(model, test_batch_generator)
     #videoTestBboxModel(model)
     #videoTestBboxHaarCascade()
     #visualize_samples()

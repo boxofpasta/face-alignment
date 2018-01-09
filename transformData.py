@@ -3,7 +3,7 @@ import sys
 import scipy.misc
 import numpy as np
 import matplotlib
-#matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -15,43 +15,57 @@ import json
 
 transform_train = True
 transform_test = False
+ibug_version = True
+
+# applies only if transform_train == True and ibug_version == False. For serializing just the helen_1 folder
+use_small = True
 
 # takes only a small sample for testing purposes
-use_samples = False
+use_samples = True
 targ_im_len = 224
 
+im_extension = '.jpg'
+coords_extension = '.pts' if ibug_version else '.txt'
+
 if transform_test:
-    path = 'downloads/helen_test'
-    npy_test_path = 'data/test'
-    print "\nProcessing images in " + path + " and saving to " + npy_test_path + "... \n"
-    test_props = helenUtils.DatasetProps('.jpg', '.txt', path, 'downloads/annotation')
-    ims, labels = helenUtils.processData(test_props, targ_im_len, sample_names=None)
+    if ibug_version:
+        im_path = 'downloads/helen_ibug/testset'
+        coords_path = im_path
+        npy_test_path = 'data/test_ibug'
+    else:
+        im_path = 'downloads/helen_test'
+        coords_path = 'downloads/annotation'
+        npy_test_path = 'data/test'
+    print "\nProcessing images in " + im_path + " and saving to " + npy_test_path + "... \n"
+    test_props = helenUtils.DatasetProps(im_extension, coords_extension, im_path, coords_path)
+    ims, labels = helenUtils.processData(test_props, targ_im_len, sample_names=None, ibug_version=ibug_version)
     helenUtils.serializeData(ims, labels, npy_test_path)
 
 if transform_train:
-
-    # for serializing just the helen_1 folder
-    use_small = False
-
-    if use_small:
-        npy_path = 'data/train_small'
+    if ibug_version:
+        im_paths = ['downloads/helen_ibug/trainset']
+        coords_path = im_paths[0]
+        npy_path = 'data/train_ibug'
     else:
-        npy_path = 'data/train'
-
-    if use_small:
-        train_paths = ['downloads/helen_1']
-    else:
-        train_paths = ['downloads/helen_1', 'downloads/helen_2', 'downloads/helen_3', 'downloads/helen_4', 'downloads/helen_5']
+        coords_path = 'downloads/annotation'
+        if use_small:
+            im_paths = ['downloads/helen_1']
+        else:
+            im_paths = ['downloads/helen_1', 'downloads/helen_2', 'downloads/helen_3', 'downloads/helen_4', 'downloads/helen_5']
+        if use_small:
+            npy_path = 'data/train_small'
+        else:
+            npy_path = 'data/train'
 
     if use_samples:
         sample_names = ['100466187_1', '11564757_2', '1240746154_1', '1165647416_1', '1691766_1']
     else:
         sample_names = None
 
-    for path in train_paths:
-        print "\nProcessing images in " + path + " and saving to " + npy_path + "... \n"
-        train_props = helenUtils.DatasetProps('.jpg', '.txt', path, 'downloads/annotation')
-        ims, labels = helenUtils.processData(train_props, targ_im_len, sample_names=sample_names)
+    for im_path in im_paths:
+        print "\nProcessing images in " + im_path + " and saving to " + npy_path + "... \n"
+        train_props = helenUtils.DatasetProps(im_extension, coords_extension, im_path, coords_path)
+        ims, labels = helenUtils.processData(train_props, targ_im_len, sample_names=sample_names, ibug_version=ibug_version)
         helenUtils.serializeData(ims, labels, npy_path)
 
 # visualize the serialized samples
@@ -62,7 +76,7 @@ if use_samples:
             factor = 1
         else:
             factor = targ_im_len
-        label = np.load(npy_path + '/labels/' + name + '.npy')
+        label = np.load(npy_path + '/coords/' + name + '.npy')
         label *= factor
         utils.visualizeCoords(im, label)
 

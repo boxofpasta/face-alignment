@@ -31,7 +31,7 @@ def getNumCoords(coords_sparsity):
 
 def getAllData(path):
     """
-    Assumes that path/ims, path/labels folders exist (and contain .npy files).
+    Assumes that path/ims, path/coords folders exist (and contain .npy files).
     Assumes that path/names.json exists with names of all examples to run tests over.
     See functions below for implementations that serialize in this format.
 
@@ -45,31 +45,33 @@ def getAllData(path):
     all_ims, all_labels = [], []
     for name in names_set:
         im = np.load(path + '/ims/' + name + '.npy')
-        label = np.load(path + '/labels/' + name + '.npy')
+        label = np.load(path + '/coords/' + name + '.npy')
         all_ims.append(im)
         all_labels.append(label)
     return (all_ims, all_labels)
 
 
-def processData(props, targ_im_len, sample_names=None):
+def processData(props, targ_im_len, sample_names=None, ibug_version=False):
     """
     Parameters
     ----------
     props: 
-        instance of DatasetProps. props.im_paths specifies the folders to read from.
+        Instance of DatasetProps. props.im_paths specifies the folders to read from.
     targ_im_len: 
-        the target image width and height. If -1, won't resize or warp.
+        The target image width and height. If -1, won't resize or warp.
     sample_names: 
-        specific samples to read from.
+        Specific samples to read from.
+    ibug_version: 
+        Set to true if using data from https://ibug.doc.ic.ac.uk/resources/facial-point-annotations/.
+        otherwise the data should be from http://www.ifp.illinois.edu/~vuongle2/helen/.
 
     Returns
     -------
     (ims, labels)
     """
 
-    # train
-    ims = read_images(props.im_path, props.im_extension, sample_names=sample_names)
-    labels = readLabels(props.label_path, props.label_extension, sample_names=sample_names)
+    ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
+    labels = readCoordsHelen(props.label_path, props.label_extension, sample_names=sample_names, ibug_version=ibug_version)
 
     if targ_im_len != -1:
         print('\n\nResizing samples ...')
@@ -99,8 +101,8 @@ def serializeData(ims, labels, npy_path):
         os.makedirs(npy_path)
     if not os.path.exists(npy_path + '/ims'):
         os.makedirs(npy_path + '/ims')
-    if not os.path.exists(npy_path + '/labels'):
-        os.makedirs(npy_path + '/labels')
+    if not os.path.exists(npy_path + '/coords'):
+        os.makedirs(npy_path + '/coords')
     try:
         # avoid overwriting data in json
         with open(npy_path + '/names.json') as fp:
@@ -112,7 +114,7 @@ def serializeData(ims, labels, npy_path):
         names_set.add(name)
         im = ims[name]
         np.save(npy_path + '/ims/' + name + '.npy', im)
-        np.save(npy_path + '/labels/' + name + '.npy', labels[name])
+        np.save(npy_path + '/coords/' + name + '.npy', labels[name])
         utils.informProgress(iter, len(ims))
         iter += 1
 
@@ -173,7 +175,7 @@ def getOrdered(ims, labels):
     return [ims_ordered, labels_ordered]
 
 
-def read_images(path, extension, sample_names=None):
+def readImagesHelen(path, extension, sample_names=None):
     """
     Parameters
     ----------
@@ -204,8 +206,7 @@ def read_images(path, extension, sample_names=None):
     utils.informProgress(1, 1)
     return ims
 
-
-def readLabels(path, extension, sample_names):
+def readCoordsHelen(path, extension, sample_names, ibug_version=False):
     """
     Parameters
     ----------
@@ -228,15 +229,26 @@ def readLabels(path, extension, sample_names):
     for fname in os.listdir(path):
         if fname.endswith(extension):
             lines = open(path + '/' + fname).readlines()
-            key = lines[0].strip()
-            if sample_names == None or key in allowed_samples:
-                cur_labels = []
-                for i in range(1, len(lines)):
-                    coords = []
-                    for s in lines[i].split():
-                        if utils.isNumber(s):
-                            coords.append(float(s))
-                    if len(coords) == 2:
+            if not ibug_version:
+                key = lines[0].strip()
+                if sample_names == None or key in allowed_samples:
+                    cur_labels = []
+                    for i in range(1, len(lines)):
+                        coords = []
+                        for s in lines[i].split():
+                            if utils.isNumber(s):
+                                coords.append(float(s))
+                        if len(coords) == 2:
+                            cur_labels.append(coords)
+                    labels[key] = cur_labels
+            else:
+                key = fname[:-len(extension)]
+                print(key)
+                if sample_names == None or key in allowed_samples:
+                    cur_labels = []
+                    for i in range(3, len(lines)-1):
+                        coords = [float(s) for s in lines[i].split()]
                         cur_labels.append(coords)
-                labels[key] = cur_labels
+                    labels[key] = cur_labels
     return labels
+

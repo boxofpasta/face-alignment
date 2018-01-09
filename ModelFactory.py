@@ -18,7 +18,7 @@ class ModelFactory:
     def __init__(self):
         self.im_width = 224
         self.im_height = 224
-        self.coords_sparsity = 4
+        self.coords_sparsity = 1
         self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
         self.heatmap_side_len = 56
         self.epsilon = 1E-5
@@ -47,7 +47,7 @@ class ModelFactory:
 
         """ Mobilenet with the last layer replaced by coordinate regression """
         in_shape = (self.im_width, self.im_height, 3)
-        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape, alpha=1.00)
+        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape, alpha=0.25)
         x = base_model.output
         x = Flatten()(x)
         x = Dense(units=2 * self.num_coords, activation='linear')(x)
