@@ -6,6 +6,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from matplotlib.patches import Circle
+from matplotlib.patches import Polygon
+from PIL import Image, ImageDraw
+import time
 import matplotlib.lines as mlines
 
 def isNumber(s):
@@ -117,8 +120,24 @@ def visualizeCoords(im, coords, special_indices=[]):
         else:
             circ = Circle((x, y), radius)
         ax.add_patch(circ)
-
     plt.show()
+
+def getMask(im, polygons):
+    """
+    Parameters
+    ----------
+    polygons: 
+        List of polygons, where each polygon has shape (num_coords, 2).
+    Returns
+    -------
+        Returns bitmask with all pixels within polygons being 1.0, and outside being 0.0.
+    """
+    width = len(im[0])
+    height = len(im)
+    img = Image.new('L', (width, height), 0)
+    for polygon in polygons:
+        ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
+    return np.array(img).astype(float)
 
 def getBbox(coords):
     coords = np.reshape(coords, (-1, 2))

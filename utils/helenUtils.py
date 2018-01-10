@@ -7,12 +7,14 @@ import generalUtils as utils
 import json
 import sys
 import cv2
+from PIL import Image
 from matplotlib.patches import Circle
+from matplotlib.patches import Polygon
 
 
 class DatasetProps:
 
-    def __init__(self, im_extension, label_extension, im_path, label_path):
+    def __init__(self, im_extension, coords_extension, im_path, coords_path):
         """
         Parameters
         ----------
@@ -22,9 +24,9 @@ class DatasetProps:
             path to folder with images
         """
         self.im_extension = im_extension
-        self.label_extension = label_extension
+        self.coords_extension = coords_extension
         self.im_path = im_path
-        self.label_path = label_path
+        self.coords_path = coords_path
 
 def getNumCoords(coords_sparsity):
     return int(np.ceil(194.0 / coords_sparsity))
@@ -70,32 +72,42 @@ def processData(props, targ_im_len, sample_names=None, ibug_version=False):
     (ims, labels)
     """
 
-    ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
-    labels = readCoordsHelen(props.label_path, props.label_extension, sample_names=sample_names, ibug_version=ibug_version)
+    all_ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
+    all_coords = readCoordsHelen(props.coords_path, props.coords_extension, sample_names=sample_names, ibug_version=ibug_version)
+    all_masks = {}
 
     if targ_im_len != -1:
         print('\n\nResizing samples ...')
         iter = 0
-        for name in ims:
+        for name in all_ims:
             if targ_im_len != -1:
-                im, label = cropPair(ims[name], labels[name])
-                im, label = resizePair(im, label, targ_im_len, targ_im_len)
-                labels[name] = normalizeCoords(label, targ_im_len, targ_im_len)
-                ims[name] = im
-            utils.informProgress(iter, len(ims))
+                im, coords = cropPair(all_ims[name], all_coords[name])
+
+                # get mask
+                if ibug_version:
+                    lip_coords = (np.array(coords[48:60])).astype(int)
+                    lip_coords = [tuple(lip_coord) for lip_coord in lip_coords]
+                    mask = utils.getMask(im, [lip_coords])
+                    mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=cv2.INTER_AREA)
+                    all_masks[name] = mask
+
+                im, coords = resizePair(im, coords, targ_im_len, targ_im_len)
+                all_coords[name] = normalizeCoords(coords, targ_im_len, targ_im_len)
+                all_ims[name] = im
+            utils.informProgress(iter, len(all_ims))
             iter += 1
         utils.informProgress(1,1)
     else:
         print('\n\nNo target dimension provided, not resizing.')
 
-    return ims, labels
+    return all_ims, all_coords, all_masks
     #""" data centering """
     #all_ims = np.array(all_ims)
     #mean_im = np.average(all_ims, axis=0)
     #std_im = np.average(np.abs(all_ims - mean_im), axis=0)
 
 
-def serializeData(ims, labels, npy_path):
+def serializeData(all_ims, all_coords, npy_path, all_masks=None, ibug_version=False):
     print('\n\nNormalizing data and serializing to disk ...')
     if not os.path.exists(npy_path):
         os.makedirs(npy_path)
@@ -103,6 +115,8 @@ def serializeData(ims, labels, npy_path):
         os.makedirs(npy_path + '/ims')
     if not os.path.exists(npy_path + '/coords'):
         os.makedirs(npy_path + '/coords')
+    if not os.path.exists(npy_path + '/masks'):
+        os.makedirs(npy_path + '/masks')
     try:
         # avoid overwriting data in json
         with open(npy_path + '/names.json') as fp:
@@ -110,12 +124,15 @@ def serializeData(ims, labels, npy_path):
     except IOError or ValueError:
         names_set = set()
     iter = 0
-    for name in ims:
+    for name in all_ims:
         names_set.add(name)
-        im = ims[name]
+        im = all_ims[name]
+        coords = all_coords[name]
         np.save(npy_path + '/ims/' + name + '.npy', im)
-        np.save(npy_path + '/coords/' + name + '.npy', labels[name])
-        utils.informProgress(iter, len(ims))
+        np.save(npy_path + '/coords/' + name + '.npy', coords)
+        if all_masks != None:
+            np.save(npy_path + '/masks/' + name + '.npy', all_masks[name])
+        utils.informProgress(iter, len(all_ims))
         iter += 1
 
     utils.informProgress(1,1)
@@ -139,13 +156,13 @@ def resizePair(im, label, targ_width, targ_height):
     for coords in label:
         coords[0] = (coords[0] - 1) * scale_x
         coords[1] = (coords[1] - 1) * scale_y
-    resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_CUBIC)
+    resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_AREA)
     return [resized, label]
 
 def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
     bbox = utils.getBbox(label)
-    bbox = utils.getRandomlyExpandedBbox(bbox, 0.1, 0.3)
+    bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
     label[:,0] -= bbox[0]
     label[:,1] -= bbox[1]
     l = int(max(0, bbox[0]))
@@ -243,7 +260,6 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                     labels[key] = cur_labels
             else:
                 key = fname[:-len(extension)]
-                print(key)
                 if sample_names == None or key in allowed_samples:
                     cur_labels = []
                     for i in range(3, len(lines)-1):
