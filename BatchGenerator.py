@@ -15,17 +15,12 @@ class BatchGenerator:
     """
     This class assumes a specific directory and file structure for your data:
         Each image needs to be saved as a .npy file in path path/ims.
-        Each label or mask needs to be saved as a .npy file in path path/coords.
-        Labels and images that correspond to each other must have the same name (excluding file extension).
+        Each coords needs to be saved as a .npy file in path path/coords.
+        Each mask needs to be saved as a .npy file in path path/masks.
+        Coords/masks and images that correspond to each other must have the same name (excluding file extension).
         The names of all samples (training pairs) must be in path/names.json.
     """
-    def __init__(self, path, coords_sparsity, val_path=None, read_all=False):
-        """
-        Parameters
-        ----------
-        read_all: 
-            If True, will read all the .npy files into an array at once. Better for small datasets.
-        """
+    def __init__(self, path, coords_sparsity=1):
         self.batch_size = 50
         self.names = []
 
@@ -40,6 +35,7 @@ class BatchGenerator:
         self.name_path = path + '/names.json'
         self.ims_path = path + '/ims'
         self.coords_path = path + '/coords'
+        self.mask_path = path + '/masks'
         self.im_extension = '.npy'
         self.label_extension = '.npy'
         
@@ -47,22 +43,29 @@ class BatchGenerator:
             self.names = json.load(fp)
 
         self.steps_per_epoch = len(self.names) / self.batch_size
+        """
         if read_all == True:
-            all_ims, all_coords = helenUtils.getAllData(path)
+            all_ims, all_coords, all_masks = helenUtils.getAllData(path)
             self.all_ims = all_ims
-            self.all_labels = [self.getLabel(self.preprocessCoords(coords)) for coords in all_coords]
+            for i in range(len(all_coords)):
+                label = self.getLabel(self.preprocessCoords(all_coords[i]), all_masks[i])
+                self.all_labels.append(label)
+        """
 
     def getPair(self, sample_name):
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
+        coords = np.load(self.coords_path + '/' + sample_name + '.npy')
+        mask = np.load(self.mask_path + '/' + sample_name + '.npy')
         label = self.getLabel(np.load(self.coords_path + '/' + sample_name + '.npy'))  
         return im, label    
 
     def getAllPairs(self):
-        if self.all_ims == None or self.all_labels == None:
-            all_ims, all_coords = helenUtils.getAllData(self.name_path)
-            self.all_ims = all_ims
-            self.all_labels = [self.getLabel(coords) for coords in all_coords]
-        return self.all_ims, self.all_labels
+        all_ims, all_coords, all_masks = helenUtils.getAllData(path)
+        self.all_ims = all_ims
+        for i in range(len(all_coords)):
+            label = self.getLabel(self.preprocessCoords(all_coords[i]), all_masks[i])
+            self.all_labels.append(label)
+        
 
     def numTotalSamples(self):
         return len(self.names)
@@ -105,28 +108,26 @@ class BatchGenerator:
                     for name in cur_names:
                         X.append(np.load(self.ims_path + '/' + name + self.im_extension))
                         coords = np.load(self.coords_path + '/' + name + self.label_extension)
+                        mask = np.load(self.masks_path + '/' + name + self.mask_extension)
                         coords = self.preprocessCoords(coords)
-                        Y.append(self.getLabel(coords))
+                        Y.append(self.getLabel(coords, mask))
+                    Y = utils.transposeList(Y)
                 yield np.array(X), np.array(Y)
 
 
-class HeatmapBatchGenerator(BatchGenerator):
+class MaskBatchGenerator(BatchGenerator):
 
-    def __init__(self, path, heatmap_sidelen, val_path=None, read_all=False):
-        BatchGenerator.__init__(self, path, val_path, read_all)
+    def __init__(self, path, mask_sidelen, val_path=None, read_all=False):
+        BatchGenerator.__init__(self, path, val_path=val_path, read_all=read_all)
 
         # pdfs cache for speeding up heatmap expansions (makes a big difference in training times)
-        self.heatmap_sidelen = heatmap_sidelen
-        self.pdfs = utils.getGaussians(10000, self.heatmap_sidelen)
+        self.mask_sidelen = mask_sidelen
+        self.pdfs = utils.getGaussians(10000, self.mask_sidelen)
 
-    def getLabel(self, coords):
+    def getLabel(self, coords, mask):
         """coords = np.reshape(coords, (self.num_coords, 2))
         heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
         return heatmap"""
-        # eyepoints start [134, 153]
-
-        # WARN: there must be 194 coords for this to work
-        coords = np.reshape(coords, (-1, 2))
-        eyecoords = coords[134:154]
-        return utils.getBbox(eyecoords)
+        lip_coords = helenUtils.getLipCoords(coords)
+        return utils.getBbox(lip_coords)

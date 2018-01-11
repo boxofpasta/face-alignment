@@ -33,24 +33,27 @@ def getNumCoords(coords_sparsity):
 
 def getAllData(path):
     """
-    Assumes that path/ims, path/coords folders exist (and contain .npy files).
+    Assumes that path/ims, path/coords, path/masks folders exist (and contain .npy files).
     Assumes that path/names.json exists with names of all examples to run tests over.
     See functions below for implementations that serialize in this format.
 
     Returns
     -------
-    (all_ims, all_labels) 
+    (all_ims, all_coords, all_masks) 
     """
     with open(path + '/names.json') as fp:
         names_set = set(json.load(fp))
     
-    all_ims, all_labels = [], []
+    all_ims, all_coords, all_masks = [], [], []
     for name in names_set:
         im = np.load(path + '/ims/' + name + '.npy')
-        label = np.load(path + '/coords/' + name + '.npy')
+        coords = np.load(path + '/coords/' + name + '.npy')
+        mask = np.load(path + '/masks/' + name + '.npy')
         all_ims.append(im)
-        all_labels.append(label)
-    return (all_ims, all_labels)
+        all_coords.append(label)
+        all_masks.append(mask)
+
+    return (all_ims, all_coords, all_masks)
 
 
 def processData(props, targ_im_len, sample_names=None, ibug_version=False):
@@ -85,7 +88,7 @@ def processData(props, targ_im_len, sample_names=None, ibug_version=False):
 
                 # get mask
                 if ibug_version:
-                    lip_coords = (np.array(coords[48:60])).astype(int)
+                    lip_coords = (np.array(getLipCoords(coords))).astype(int)
                     lip_coords = [tuple(lip_coord) for lip_coord in lip_coords]
                     mask = utils.getMask(im, [lip_coords])
                     mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=cv2.INTER_AREA)
@@ -268,3 +271,5 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                     labels[key] = cur_labels
     return labels
 
+def getLipCoords(coords):
+    return coords[48:60]

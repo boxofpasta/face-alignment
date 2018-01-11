@@ -155,30 +155,31 @@ if __name__ == '__main__':
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
-    visualizeSamples('data/test')
+    #visualizeSamples('data/test')
     #model = get_saved_model('models/fully_connected_v2.h5')
     #print get_avg_test_error(model, 'data/test')
     #try_saved_model('models/fully_connected_v1.h5')
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
-    """factory = ModelFactory.ModelFactory()
-    model = factory.getFullyConnected()
+    factory = ModelFactory.ModelFactory()
+    model = factory.getLipMasker(alpha=0.25)
+    #model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
-    model = factory.getSaved('models/tmp/fully_connected_025.h5')
-    train_batch_generator = BatchGenerator.BatchGenerator('data/train', factory.coords_sparsity)
-    test_batch_generator = BatchGenerator.BatchGenerator('data/test', factory.coords_sparsity, read_all=True)
+    #model = factory.getSaved('models/tmp/fully_connected_025.h5')
+    train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train', 28)
+    #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
     model.fit_generator(generator=train_batch_generator.generate(),
                         steps_per_epoch=train_batch_generator.steps_per_epoch,
                         epochs=60)
 
-    model.save('models/tmp/fully_connected_025.h5')
+    model.save('models/tmp/lip_masker_025.h5')
     if notify_training_complete:
         from google.cloud import error_reporting
         client = error_reporting.Client()
         client.report('Training complete!')
-    """
+
     """
     for fname in os.listdir('downloads/samples'):
         im = scipy.misc.imread('downloads/samples/' + fname)

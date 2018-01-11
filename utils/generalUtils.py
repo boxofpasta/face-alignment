@@ -11,6 +11,9 @@ from PIL import Image, ImageDraw
 import time
 import matplotlib.lines as mlines
 
+def transposeList(l):
+    return np.array(l).T.tolist()
+
 def isNumber(s):
     try:
         float(s)
@@ -140,6 +143,11 @@ def getMask(im, polygons):
     return np.array(img).astype(float)
 
 def getBbox(coords):
+    """
+    Returns
+    -------
+    Array with values ordered as such: [left, top, right, bottom]
+    """
     coords = np.reshape(coords, (-1, 2))
     x_vals = coords[:,0]
     y_vals = coords[:,1]
