@@ -125,22 +125,25 @@ def visualizeCoords(im, coords, special_indices=[]):
         ax.add_patch(circ)
     plt.show()
 
-def getMask(im, polygons):
+def getMask(polygons, src_dims, dst_dims):
     """
     Parameters
     ----------
     polygons: 
         List of polygons, where each polygon has shape (num_coords, 2).
+    src_dims: 
+        A 2-tuple of integers, specifying (height, width) of the image that coordinates in polygons are using
+    dst_dims: 
+        Same format as above. Output image will be resized to these dimensions.
     Returns
     -------
         Returns bitmask with all pixels within polygons being 1.0, and outside being 0.0.
     """
-    width = len(im[0])
-    height = len(im)
-    img = Image.new('L', (width, height), 0)
+    img = Image.new('L', src_dims, 0)
     for polygon in polygons:
         ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
-    return np.array(img).astype(float)
+    img = np.array(img).astype(float)
+    return cv2.resize(mask, dst_dims, interpolation=cv2.INTER_AREA)
 
 def getBbox(coords):
     """

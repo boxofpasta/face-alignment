@@ -33,27 +33,26 @@ def getNumCoords(coords_sparsity):
 
 def getAllData(path):
     """
-    Assumes that path/ims, path/coords, path/masks folders exist (and contain .npy files).
+    Assumes that path/ims, path/coords folders exist (and contain .npy files).
     Assumes that path/names.json exists with names of all examples to run tests over.
     See functions below for implementations that serialize in this format.
 
     Returns
     -------
-    (all_ims, all_coords, all_masks) 
+    (all_ims, all_coords) 
     """
     with open(path + '/names.json') as fp:
         names_set = set(json.load(fp))
     
-    all_ims, all_coords, all_masks = [], [], []
+    all_ims, all_coords = [], []
     for name in names_set:
         im = np.load(path + '/ims/' + name + '.npy')
         coords = np.load(path + '/coords/' + name + '.npy')
         mask = np.load(path + '/masks/' + name + '.npy')
         all_ims.append(im)
         all_coords.append(label)
-        all_masks.append(mask)
 
-    return (all_ims, all_coords, all_masks)
+    return (all_ims, all_coords)
 
 
 def processData(props, targ_im_len, sample_names=None, ibug_version=False):
@@ -77,7 +76,6 @@ def processData(props, targ_im_len, sample_names=None, ibug_version=False):
 
     all_ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
     all_coords = readCoordsHelen(props.coords_path, props.coords_extension, sample_names=sample_names, ibug_version=ibug_version)
-    all_masks = {}
 
     if targ_im_len != -1:
         print('\n\nResizing samples ...')
@@ -85,15 +83,6 @@ def processData(props, targ_im_len, sample_names=None, ibug_version=False):
         for name in all_ims:
             if targ_im_len != -1:
                 im, coords = cropPair(all_ims[name], all_coords[name])
-
-                # get mask
-                if ibug_version:
-                    lip_coords = (np.array(getLipCoords(coords))).astype(int)
-                    lip_coords = [tuple(lip_coord) for lip_coord in lip_coords]
-                    mask = utils.getMask(im, [lip_coords])
-                    mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=cv2.INTER_AREA)
-                    all_masks[name] = mask
-
                 im, coords = resizePair(im, coords, targ_im_len, targ_im_len)
                 all_coords[name] = normalizeCoords(coords, targ_im_len, targ_im_len)
                 all_ims[name] = im
@@ -103,14 +92,14 @@ def processData(props, targ_im_len, sample_names=None, ibug_version=False):
     else:
         print('\n\nNo target dimension provided, not resizing.')
 
-    return all_ims, all_coords, all_masks
+    return all_ims, all_coords
     #""" data centering """
     #all_ims = np.array(all_ims)
     #mean_im = np.average(all_ims, axis=0)
     #std_im = np.average(np.abs(all_ims - mean_im), axis=0)
 
 
-def serializeData(all_ims, all_coords, npy_path, all_masks=None, ibug_version=False):
+def serializeData(all_ims, all_coords, npy_path, ibug_version=False):
     print('\n\nNormalizing data and serializing to disk ...')
     if not os.path.exists(npy_path):
         os.makedirs(npy_path)
@@ -118,8 +107,6 @@ def serializeData(all_ims, all_coords, npy_path, all_masks=None, ibug_version=Fa
         os.makedirs(npy_path + '/ims')
     if not os.path.exists(npy_path + '/coords'):
         os.makedirs(npy_path + '/coords')
-    if not os.path.exists(npy_path + '/masks'):
-        os.makedirs(npy_path + '/masks')
     try:
         # avoid overwriting data in json
         with open(npy_path + '/names.json') as fp:
@@ -133,8 +120,6 @@ def serializeData(all_ims, all_coords, npy_path, all_masks=None, ibug_version=Fa
         coords = all_coords[name]
         np.save(npy_path + '/ims/' + name + '.npy', im)
         np.save(npy_path + '/coords/' + name + '.npy', coords)
-        if all_masks != None:
-            np.save(npy_path + '/masks/' + name + '.npy', all_masks[name])
         utils.informProgress(iter, len(all_ims))
         iter += 1
 
@@ -150,6 +135,7 @@ def normalizeCoords(coords, im_width, im_height):
         coord[1] /= im_width
     return coords
 
+#def denormalizeCoords(coords, im_width, im_height):   
 
 def resizePair(im, label, targ_width, targ_height):
     cur_height = len(im)

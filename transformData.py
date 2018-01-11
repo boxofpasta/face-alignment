@@ -40,8 +40,8 @@ if transform_test:
         npy_test_path = 'data/test'
     print "\nProcessing images in " + im_path + " and saving to " + npy_test_path + "... \n"
     test_props = helenUtils.DatasetProps(im_extension, coords_extension, im_path, coords_path)
-    ims, coords, masks = helenUtils.processData(test_props, targ_im_len, sample_names=None, ibug_version=ibug_version)
-    helenUtils.serializeData(ims, coords, npy_test_path, all_masks=masks, ibug_version=ibug_version)
+    ims, coords = helenUtils.processData(test_props, targ_im_len, sample_names=None, ibug_version=ibug_version)
+    helenUtils.serializeData(ims, coords, npy_test_path, ibug_version=ibug_version)
 
 if transform_train:
     if ibug_version:
@@ -67,8 +67,8 @@ if transform_train:
     for im_path in im_paths:
         print "\nProcessing images in " + im_path + " and saving to " + npy_path + "... \n"
         train_props = helenUtils.DatasetProps(im_extension, coords_extension, im_path, coords_path)
-        ims, coords, masks = helenUtils.processData(train_props, targ_im_len, sample_names=sample_names, ibug_version=ibug_version)
-        helenUtils.serializeData(ims, coords, npy_path, all_masks=masks, ibug_version=ibug_version)
+        ims, coords = helenUtils.processData(train_props, targ_im_len, sample_names=sample_names, ibug_version=ibug_version)
+        helenUtils.serializeData(ims, coords, npy_path, ibug_version=ibug_version)
 
 # visualize the serialized samples
 if use_samples:
@@ -80,10 +80,12 @@ if use_samples:
             factor = targ_im_len
         label = np.load(npy_path + '/coords/' + name + '.npy')
         label *= factor
+        """
         mask = np.load(npy_path + '/masks/' + name + '.npy')
         mask = (80 * mask).astype(np.uint8)
         rem = 255 - im[:,:,1]
         im[:,:,1] += np.minimum(rem, mask)
+        """
         utils.visualizeCoords(im, label)
 
 #helenUtils.save_data(train_props, 'data/train', 224, append_to_names=False)
