@@ -77,7 +77,7 @@ if use_samples:
         if targ_im_len == -1:
             factor = 1
         else:
-            factor = targ_im_len
+            factor = targ_im_len-1
         label = np.load(npy_path + '/coords/' + name + '.npy')
         label *= factor
         """

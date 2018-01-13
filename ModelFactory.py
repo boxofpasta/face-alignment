@@ -7,11 +7,12 @@ import time
 import sys
 import BatchGenerator
 from keras.layers import Dense, Reshape, BatchNormalization, Flatten
-from keras.layers import Dropout, Conv2DTranspose
+from keras.layers import Dropout, Conv2DTranspose, Lambda
 from keras.models import Model, Sequential
 from keras.models import load_model
 from keras.applications import mobilenet
 from keras.applications.imagenet_utils import _obtain_input_shape
+from keras import backend as K
 import tensorflow as tf
 
 # mobilenet things
@@ -31,7 +32,7 @@ class ModelFactory:
         self.im_height = 224
         self.coords_sparsity = 1
         self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
-        self.mask_side_len = 56
+        self.mask_side_len = 28
         self.epsilon = 1E-5
 
     def getSaved(self, path):
@@ -128,93 +129,80 @@ class ModelFactory:
         x = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
-
-        x = DepthwiseConvolution2D(int(32 * alpha), (3, 3), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(64 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-
-        x = DepthwiseConvolution2D(int(64 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(128 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-
-        x = DepthwiseConvolution2D(int(128 * alpha), (3, 3), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(128 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-
-        x = DepthwiseConvolution2D(int(128 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(256 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-
-        x = DepthwiseConvolution2D(int(256 * alpha), (3, 3), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(256 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-
-        x = DepthwiseConvolution2D(int(256 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(512 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
+        x = self.depthwiseConvBlock(x, 32 * alpha, 64 * alpha)
+        x = self.depthwiseConvBlock(x, 64 * alpha, 128 * alpha, down_sample=True)
+        x = self.depthwiseConvBlock(x, 128 * alpha, 128 * alpha)
+        x = self.depthwiseConvBlock(x, 128 * alpha, 256 * alpha, down_sample=True)
+        x = self.depthwiseConvBlock(x, 256 * alpha, 256 * alpha)
+        x = self.depthwiseConvBlock(x, 256 * alpha, 512 * alpha, down_sample=True)
 
         if not shallow:
             for _ in range(5):
-                x = DepthwiseConvolution2D(int(512 * alpha), (3, 3), strides=(1, 1), padding='same', use_bias=False)(x)
-                x = BatchNormalization()(x)
-                x = Activation('relu')(x)
-                x = Convolution2D(int(512 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-                x = BatchNormalization()(x)
-                x = Activation('relu')(x)
+                x = self.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
 
         # End of backbone:
         # Output dims are 14 x 14 x (512 * alpha)
 
-        # Mask head: 
-        # mask code here ...
-        a = x
-
         # Bbox regressor head: 
-        b = DepthwiseConvolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        b = BatchNormalization()(b)
-        b = Activation('relu')(b)
-        b = Convolution2D(int(1024 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(b)
-        b = BatchNormalization()(b)
-        b = Activation('relu')(b)
-
-        b = DepthwiseConvolution2D(int(1024 * alpha), (3, 3), strides=(1, 1), padding='same', use_bias=False)(b)
-        b = BatchNormalization()(b)
-        b = Activation('relu')(b)
-        b = Convolution2D(int(1024 * alpha), (1, 1), strides=(1, 1), padding='same', use_bias=False)(b)
-        b = BatchNormalization()(b)
-        b = Activation('relu')(b)
-
+        b = self.depthwiseConvBlock(x, 512 * alpha, 1024 * alpha, down_sample=True)
+        b = self.depthwiseConvBlock(b, 1024 * alpha, 1024 * alpha)
         b = GlobalAveragePooling2D()(b)
         b = Dense(4)(b)
 
+        # Mask head: 
+        # https://arxiv.org/pdf/1703.06870.pdf
+        a = Lambda(self.roiAlign, arguments={'boxes' : b})(x)
+        a = self.depthwiseConvBlock(a, 512 * alpha, 1024 * alpha)
+        a = self.depthwiseConvBlock(a, 1024 * alpha, 1024 * alpha)
+
+        # output is 14 x 14
+        a = Conv2DTranspose(int(128 * alpha), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)
+        for i in range(3):
+            a = self.depthwiseConvBlock(a, 128 * alpha, 128 * alpha)
+
+        # output is 28 x 28
+        a = Conv2DTranspose(int(128 * alpha), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)
+        a = self.depthwiseConvBlock(a, 128 * alpha, 1)
+        a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
         if input_tensor is not None:
             inputs = get_source_inputs(input_tensor)
         else:
             inputs = img_input
 
-        masks = a
-        bbox_coords = b
-        model = Model(inputs, outputs=[masks, bbox_coords])
-        model.compile(loss=[self.maskerLoss, self.squaredDistanceLoss], optimizer='adam')
+        #masks = Lambda(lambda a : K.zeros((50, self.mask_side_len, self.mask_side_len)), name='mask')(x) #a
+        masks = Lambda(lambda a: a, name='mask')(a)
+        bbox_coords = Lambda(lambda b: b, name='bbox')(b)
+        model = Model(inputs, outputs=[bbox_coords, masks])
+        model.compile(loss=[self.squaredDistanceLoss, self.maskSigmoidLoss], optimizer='adam')
+        #model = Model(inputs, outputs=masks)
+        #model.compile(loss=self.maskSigmoidLoss, optimizer='adam')
         return model
+
+    def roiAlign(self, x, boxes):
+        batch_dim = tf.shape(boxes)[0]
+        #indices = tf.linspace(0.0, tf.cast(batch_dim - 1, tf.float32), batch_dim)
+        indices = tf.linspace(0.0, tf.cast(49, tf.float32), 50)
+        indices = tf.cast(indices, tf.int32)
+        crops = tf.image.crop_and_resize(x, boxes, indices, tf.constant([7, 7]))
+        return crops
+    
+    def depthwiseConvBlock(self, x, features_in, features_out, down_sample=False):
+        strides = (2, 2) if down_sample else (1, 1)
+        x = DepthwiseConvolution2D(int(features_in), (3, 3), strides=strides, padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = Convolution2D(int(features_out), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        return x
 
     """ 
     ----------------------------------------------------------------
@@ -227,10 +215,11 @@ class ModelFactory:
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=preds, dim=1)
         return tf.reduce_sum(cross_entropy)
 
-    def maskerLoss(self, labels, preds):
-        #cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
-        #return tf.reduce_sum(cross_entropy)
-        return 0
+    def maskSigmoidLoss(self, labels, preds):
+        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
+        return tf.reduce_sum(cross_entropy)
+        #c = tf.reshape(labels, (-1, 28, 28))
+        #return tf.zeros((1))
 
     def squaredDistanceLoss(self, labels, preds):
         return tf.reduce_sum(tf.square(labels - preds))

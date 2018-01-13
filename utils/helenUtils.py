@@ -131,8 +131,8 @@ def serializeData(all_ims, all_coords, npy_path, ibug_version=False):
 
 def normalizeCoords(coords, im_width, im_height):
     for coord in coords:
-        coord[0] /= im_height
-        coord[1] /= im_width
+        coord[0] /= (im_height - 1)
+        coord[1] /= (im_width - 1)
     return coords
 
 #def denormalizeCoords(coords, im_width, im_height):   
@@ -143,8 +143,8 @@ def resizePair(im, label, targ_width, targ_height):
     scale_x = float(targ_width) / cur_width
     scale_y = float(targ_height) / cur_height
     for coords in label:
-        coords[0] = (coords[0] - 1) * scale_x
-        coords[1] = (coords[1] - 1) * scale_y
+        coords[0] = coords[0] * scale_x
+        coords[1] = coords[1] * scale_y
     resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_AREA)
     return [resized, label]
 

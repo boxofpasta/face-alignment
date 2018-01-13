@@ -15,8 +15,11 @@ import time
 import sys
 import ModelFactory
 import BatchGenerator
+import keras.backend as K
+#from keras.utils import plot_model
 from keras.models import load_model
 from keras.applications import mobilenet
+from tensorflow.python import debug as tf_debug
 
 
 def trySavedFullyConnected(path):
@@ -65,7 +68,7 @@ def visualizeSamples(folder, sample_names=[], model=None, special_indices=[]):
             coords = model.predict(np.array([im]), batch_size=1)
 
         coords = np.reshape(coords, (-1, 2))
-        coords *= len(im)
+        coords *= len(im)-1
         utils.visualizeCoords(im, coords, special_indices)
 
 def queryCoordPositions():
@@ -152,6 +155,9 @@ def videoTestBboxHaarCascade():
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
+    #sess = K.get_session()
+    #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    #K.set_session(sess)
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
@@ -162,15 +168,15 @@ if __name__ == '__main__':
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
     factory = ModelFactory.ModelFactory()
-    model = factory.getLipMasker(alpha=0.25)
+    model = factory.getLipMasker(alpha=1.0)
     #model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
     #model = factory.getSaved('models/tmp/fully_connected_025.h5')
-    train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train', 28)
+    train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train', factory.mask_side_len)
     #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
-    model.fit_generator(generator=train_batch_generator.generate(),
+    """model.fit_generator(generator=train_batch_generator.generate(),
                         steps_per_epoch=train_batch_generator.steps_per_epoch,
                         epochs=60)
 
@@ -179,7 +185,7 @@ if __name__ == '__main__':
         from google.cloud import error_reporting
         client = error_reporting.Client()
         client.report('Training complete!')
-
+    """
     """
     for fname in os.listdir('downloads/samples'):
         im = scipy.misc.imread('downloads/samples/' + fname)

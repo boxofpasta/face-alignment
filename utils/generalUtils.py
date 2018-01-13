@@ -8,11 +8,12 @@ from scipy.stats import norm
 from matplotlib.patches import Circle
 from matplotlib.patches import Polygon
 from PIL import Image, ImageDraw
+import cv2
 import time
 import matplotlib.lines as mlines
 
 def transposeList(l):
-    return np.array(l).T.tolist()
+    return map(list, zip(*l))
 
 def isNumber(s):
     try:
@@ -143,7 +144,7 @@ def getMask(polygons, src_dims, dst_dims):
     for polygon in polygons:
         ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
     img = np.array(img).astype(float)
-    return cv2.resize(mask, dst_dims, interpolation=cv2.INTER_AREA)
+    return cv2.resize(img, dst_dims, interpolation=cv2.INTER_AREA)
 
 def getBbox(coords):
     """

@@ -94,22 +94,31 @@ class BatchGenerator:
                     X = []
                     Y = []
                     for name in cur_names:
-                        X.append(np.load(self.ims_path + '/' + name + self.im_extension))
+                        im = np.load(self.ims_path + '/' + name + self.im_extension)
+                        X.append(im)
                         coords = np.load(self.coords_path + '/' + name + self.label_extension)
                         coords = self.preprocessCoords(coords)
                         Y.append(self.getLabel(coords, im))
-                    Y = utils.transposeList(Y)
-                yield np.array(X), np.array(Y)
+                    
+                    # in the case of multiple outputs
+                    if isinstance(Y[0], tuple):
+                        raise ValueError('Please use a list for multiple outputs')
+                    if isinstance(Y[0], list):
+                        Y = utils.transposeList(Y)
+                        Y = [np.array(output_batch_type) for output_batch_type in Y]
+                    else:
+                        Y = np.array(Y)
+                yield np.array(X), Y
 
 
 class MaskBatchGenerator(BatchGenerator):
 
-    def __init__(self, path, mask_sidelen):
+    def __init__(self, path, mask_side_len):
         BatchGenerator.__init__(self, path)
+        self.mask_side_len = mask_side_len
 
         # pdfs cache for speeding up coord mask expansions (makes a big difference in training times)
-        #self.mask_sidelen = mask_sidelen
-        #self.pdfs = utils.getGaussians(10000, self.mask_sidelen)
+        #self.pdfs = utils.getGaussians(10000, self.mask_side_len)
 
     def getLabel(self, coords, im):
         """coords = np.reshape(coords, (self.num_coords, 2))
@@ -118,10 +127,10 @@ class MaskBatchGenerator(BatchGenerator):
         return heatmap"""
 
         # need lip_coords in pixel-coordinate units for generating masks
-        lip_coords = (len(im) * np.array(getLipCoords(coords))).astype(int)
+        lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords))).astype(int)
         lip_coords = [tuple(lip_coord) for lip_coord in lip_coords]
-        mask = utils.getMask([lip_coords], (len(im), len(im[0])), (mask_sidelen, mask_sidelen))
+        mask = utils.getMask([lip_coords], (len(im), len(im[0])), (self.mask_side_len, self.mask_side_len))
        
         # bbox coords
         lip_coords_normalized = helenUtils.getLipCoords(coords)
-        return utils.getBbox(lip_coords_normalized)
+        return [utils.getBbox(lip_coords_normalized), mask]
