@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
     factory = ModelFactory.ModelFactory()
-    model = factory.getLipMasker(alpha=1.0)
+    model = factory.getLipMasker(alpha=0.3)
     #model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
     #model = factory.getSaved('models/tmp/fully_connected_025.h5')
@@ -176,16 +176,15 @@ if __name__ == '__main__':
     #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
-    """model.fit_generator(generator=train_batch_generator.generate(),
+    model.fit_generator(generator=train_batch_generator.generate(),
                         steps_per_epoch=train_batch_generator.steps_per_epoch,
-                        epochs=60)
+                        epochs=30)
 
     model.save('models/tmp/lip_masker_025.h5')
     if notify_training_complete:
         from google.cloud import error_reporting
         client = error_reporting.Client()
         client.report('Training complete!')
-    """
     """
     for fname in os.listdir('downloads/samples'):
         im = scipy.misc.imread('downloads/samples/' + fname)

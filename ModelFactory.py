@@ -13,10 +13,10 @@ from keras.models import load_model
 from keras.applications import mobilenet
 from keras.applications.imagenet_utils import _obtain_input_shape
 from keras import backend as K
+import utils.layerUtils as layerUtils
 import tensorflow as tf
 
 # mobilenet things
-import keras.backend as K
 from keras.applications.imagenet_utils import _obtain_input_shape
 from keras import backend as K
 from keras.layers import Input, Convolution2D, \
@@ -129,31 +129,33 @@ class ModelFactory:
         x = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
-        x = self.depthwiseConvBlock(x, 32 * alpha, 64 * alpha)
-        x = self.depthwiseConvBlock(x, 64 * alpha, 128 * alpha, down_sample=True)
-        x = self.depthwiseConvBlock(x, 128 * alpha, 128 * alpha)
-        x = self.depthwiseConvBlock(x, 128 * alpha, 256 * alpha, down_sample=True)
-        x = self.depthwiseConvBlock(x, 256 * alpha, 256 * alpha)
-        x = self.depthwiseConvBlock(x, 256 * alpha, 512 * alpha, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 32 * alpha, 64 * alpha)
+        x = layerUtils.depthwiseConvBlock(x, 64 * alpha, 128 * alpha, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 128 * alpha, 128 * alpha)
+        x = layerUtils.depthwiseConvBlock(x, 128 * alpha, 256 * alpha, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 256 * alpha, 256 * alpha)
+        x = layerUtils.depthwiseConvBlock(x, 256 * alpha, 512 * alpha, down_sample=True)
 
         if not shallow:
             for _ in range(5):
-                x = self.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
+                x = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
 
         # End of backbone:
         # Output dims are 14 x 14 x (512 * alpha)
 
         # Bbox regressor head: 
-        b = self.depthwiseConvBlock(x, 512 * alpha, 1024 * alpha, down_sample=True)
-        b = self.depthwiseConvBlock(b, 1024 * alpha, 1024 * alpha)
+        b = layerUtils.depthwiseConvBlock(x, 512 * alpha, 1024 * alpha, down_sample=True)
+        b = layerUtils.depthwiseConvBlock(b, 1024 * alpha, 1024 * alpha)
         b = GlobalAveragePooling2D()(b)
         b = Dense(4)(b)
 
         # Mask head: 
         # https://arxiv.org/pdf/1703.06870.pdf
-        a = Lambda(self.roiAlign, arguments={'boxes' : b})(x)
-        a = self.depthwiseConvBlock(a, 512 * alpha, 1024 * alpha)
-        a = self.depthwiseConvBlock(a, 1024 * alpha, 1024 * alpha)
+        #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
+        #a = Lambda(self.cropAndResize, arguments={'boxes' : b, 'out_shape':[7,7]})(x)
+        a = layerUtils.CropAndResize([7, 7])([x, b])
+        a = layerUtils.depthwiseConvBlock(a, 512 * alpha, 1024 * alpha)
+        a = layerUtils.depthwiseConvBlock(a, 1024 * alpha, 1024 * alpha)
 
         # output is 14 x 14
         a = Conv2DTranspose(int(128 * alpha), kernel_size=(3, 3),
@@ -162,7 +164,7 @@ class ModelFactory:
                 padding='same',
                 data_format='channels_last')(a)
         for i in range(3):
-            a = self.depthwiseConvBlock(a, 128 * alpha, 128 * alpha)
+            a = layerUtils.depthwiseConvBlock(a, 128 * alpha, 128 * alpha)
 
         # output is 28 x 28
         a = Conv2DTranspose(int(128 * alpha), kernel_size=(3, 3),
@@ -170,39 +172,20 @@ class ModelFactory:
                 activation='relu',
                 padding='same',
                 data_format='channels_last')(a)
-        a = self.depthwiseConvBlock(a, 128 * alpha, 1)
+        a = layerUtils.depthwiseConvBlock(a, 128 * alpha, 1)
         a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
         if input_tensor is not None:
             inputs = get_source_inputs(input_tensor)
         else:
             inputs = img_input
 
-        #masks = Lambda(lambda a : K.zeros((50, self.mask_side_len, self.mask_side_len)), name='mask')(x) #a
         masks = Lambda(lambda a: a, name='mask')(a)
         bbox_coords = Lambda(lambda b: b, name='bbox')(b)
         model = Model(inputs, outputs=[bbox_coords, masks])
-        model.compile(loss=[self.squaredDistanceLoss, self.maskSigmoidLoss], optimizer='adam')
+        model.compile(loss=[self.squaredDistanceLoss, self.maskSigmoidLoss(b)], optimizer='adam')
         #model = Model(inputs, outputs=masks)
         #model.compile(loss=self.maskSigmoidLoss, optimizer='adam')
         return model
-
-    def roiAlign(self, x, boxes):
-        batch_dim = tf.shape(boxes)[0]
-        #indices = tf.linspace(0.0, tf.cast(batch_dim - 1, tf.float32), batch_dim)
-        indices = tf.linspace(0.0, tf.cast(49, tf.float32), 50)
-        indices = tf.cast(indices, tf.int32)
-        crops = tf.image.crop_and_resize(x, boxes, indices, tf.constant([7, 7]))
-        return crops
-    
-    def depthwiseConvBlock(self, x, features_in, features_out, down_sample=False):
-        strides = (2, 2) if down_sample else (1, 1)
-        x = DepthwiseConvolution2D(int(features_in), (3, 3), strides=strides, padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        x = Convolution2D(int(features_out), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = Activation('relu')(x)
-        return x
 
     """ 
     ----------------------------------------------------------------
@@ -215,11 +198,14 @@ class ModelFactory:
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=preds, dim=1)
         return tf.reduce_sum(cross_entropy)
 
-    def maskSigmoidLoss(self, labels, preds):
-        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
-        return tf.reduce_sum(cross_entropy)
-        #c = tf.reshape(labels, (-1, 28, 28))
-        #return tf.zeros((1))
+    def maskSigmoidLoss(self, bboxes):
+        def loss(labels, preds):
+            labels = tf.expand_dims(labels, axis=-1)
+            cropped_labels = layerUtils.CropAndResize([self.mask_side_len, self.mask_side_len])([labels, bboxes])
+            cropped_labels = tf.squeeze(cropped_labels)
+            cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=cropped_labels)
+            return tf.reduce_sum(cross_entropy)
+        return loss
 
     def squaredDistanceLoss(self, labels, preds):
         return tf.reduce_sum(tf.square(labels - preds))

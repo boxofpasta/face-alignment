@@ -129,8 +129,10 @@ class MaskBatchGenerator(BatchGenerator):
         # need lip_coords in pixel-coordinate units for generating masks
         lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords))).astype(int)
         lip_coords = [tuple(lip_coord) for lip_coord in lip_coords]
-        mask = utils.getMask([lip_coords], (len(im), len(im[0])), (self.mask_side_len, self.mask_side_len))
-       
+        mask = utils.getMask([lip_coords], (len(im), len(im[0])), (len(im), len(im[0])))
+        
         # bbox coords
         lip_coords_normalized = helenUtils.getLipCoords(coords)
-        return [utils.getBbox(lip_coords_normalized), mask]
+        bbox = utils.getBbox(lip_coords_normalized)
+        bbox = utils.getExpandedBbox(bbox, 0.5, 0.5)
+        return [bbox, mask]
