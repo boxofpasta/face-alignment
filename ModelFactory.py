@@ -23,7 +23,7 @@ from keras.layers import Input, Convolution2D, \
     GlobalAveragePooling2D, Dense, BatchNormalization, Activation
 from keras.models import Model
 from keras.engine.topology import get_source_inputs
-from depthwise_conv2d import DepthwiseConvolution2D
+from depthwise_conv2d import DepthwiseConvolution2D, DepthwiseConv2D
 
 class ModelFactory:
 
@@ -40,11 +40,17 @@ class ModelFactory:
         model = load_model(path, custom_objects={
             'squaredDistanceLoss': self.squaredDistanceLoss,
             'pointMaskSoftmaxLoss': self.pointMaskSoftmaxLoss,
+            'identityLoss': self.identityLoss,
+            'maskSigmoidLoss': self.maskSigmoidLoss,
+            'MaskSigmoidLossLayer': layerUtils.MaskSigmoidLossLayer,
+            'SquaredDistanceLossLayer': layerUtils.SquaredDistanceLossLayer,
             'iouLoss': self.iouLoss,
             'scaledSquaredDistanceLoss': self.percentageBboxDistanceLoss,
             'percentageBboxDistanceLoss': self.percentageBboxDistanceLoss,
             'relu6': mobilenet.relu6,
-            'DepthwiseConv2D': mobilenet.DepthwiseConv2D
+            'DepthwiseConvolution2d': DepthwiseConvolution2D,
+            'DepthwiseConv2D': DepthwiseConv2D,
+            'CropAndResize' : layerUtils.CropAndResize,
         })
         print 'COMPLETE'
         return model
@@ -109,7 +115,7 @@ class ModelFactory:
     def getLipMasker(self, alpha=1):
         input_tensor = None
         shallow = False
-        input_shape = (self.im_width, self.im_height, 3)
+        input_shape = (self.im_height, self.im_width, 3)
 
         # https://github.com/rcmalli/keras-mobilenet/blob/master/keras_mobilenet/mobilenet.py
         input_shape = _obtain_input_shape(input_shape,
@@ -125,6 +131,10 @@ class ModelFactory:
                 img_input = Input(tensor=input_tensor, shape=input_shape)
             else:
                 img_input = input_tensor
+
+        # labels to be set as inputs as well
+        bbox_gts = Input(shape=([4]))
+        mask_gts = Input(shape=(self.im_height, self.im_width))
 
         x = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = BatchNormalization()(x)
@@ -151,9 +161,7 @@ class ModelFactory:
 
         # Mask head: 
         # https://arxiv.org/pdf/1703.06870.pdf
-        #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        #a = Lambda(self.cropAndResize, arguments={'boxes' : b, 'out_shape':[7,7]})(x)
-        a = layerUtils.CropAndResize([7, 7])([x, b])
+        a = layerUtils.CropAndResize(7)([x, b])
         a = layerUtils.depthwiseConvBlock(a, 512 * alpha, 1024 * alpha)
         a = layerUtils.depthwiseConvBlock(a, 1024 * alpha, 1024 * alpha)
 
@@ -181,10 +189,15 @@ class ModelFactory:
 
         masks = Lambda(lambda a: a, name='mask')(a)
         bbox_coords = Lambda(lambda b: b, name='bbox')(b)
-        model = Model(inputs, outputs=[bbox_coords, masks])
-        model.compile(loss=[self.squaredDistanceLoss, self.maskSigmoidLoss(b)], optimizer='adam')
-        #model = Model(inputs, outputs=masks)
-        #model.compile(loss=self.maskSigmoidLoss, optimizer='adam')
+        #mask_loss = Lambda(self.maskSigmoidLoss, name='mask_loss', arguments={'preds':masks, 'bboxes':bbox_coords})(mask_gts)
+        #bbox_loss = Lambda(self.squaredDistanceLoss, name='bbox_loss', arguments={'preds':bbox_coords})(bbox_gts)
+        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask')([mask_gts, masks, bbox_coords])
+        bbox_loss = layerUtils.SquaredDistanceLossLayer(name='bbox')([bbox_gts, bbox_coords])
+        total_loss = Lambda(lambda(l1, l2) : l1 + l2)([mask_loss, bbox_loss])
+
+        model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bbox_coords, masks])
+        model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer='adam')
+        #model.summary()
         return model
 
     """ 
@@ -198,14 +211,23 @@ class ModelFactory:
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=preds, dim=1)
         return tf.reduce_sum(cross_entropy)
 
-    def maskSigmoidLoss(self, bboxes):
-        def loss(labels, preds):
+    """def maskSigmoidLoss(self, bboxes):
+        def maskSigmoidLossHelper(labels, preds):
             labels = tf.expand_dims(labels, axis=-1)
             cropped_labels = layerUtils.CropAndResize([self.mask_side_len, self.mask_side_len])([labels, bboxes])
             cropped_labels = tf.squeeze(cropped_labels)
             cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=cropped_labels)
             return tf.reduce_sum(cross_entropy)
-        return loss
+        return maskSigmoidLossHelper"""
+    def identityLoss(self, labels, preds):
+        return preds
+
+    def maskSigmoidLoss(self, labels, preds, bboxes):
+        labels = tf.expand_dims(labels, axis=-1)
+        cropped_labels = layerUtils.CropAndResize(self.mask_side_len)([labels, bboxes])
+        cropped_labels = tf.squeeze(cropped_labels)
+        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=cropped_labels)
+        return tf.reduce_sum(cross_entropy)
 
     def squaredDistanceLoss(self, labels, preds):
         return tf.reduce_sum(tf.square(labels - preds))

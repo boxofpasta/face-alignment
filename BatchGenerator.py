@@ -45,7 +45,8 @@ class BatchGenerator:
 
     def getPair(self, sample_name):
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
-        label = self.getLabel(np.load(self.coords_path + '/' + sample_name + '.npy'), im)  
+        coords = np.load(self.coords_path + '/' + sample_name + '.npy')
+        label = self.getLabel(self.preprocessCoords(coords), im)  
         return im, label    
 
     def getAllPairs(self):
@@ -86,29 +87,37 @@ class BatchGenerator:
                 indices = np.concatenate((rand_idx[start : end], (rand_idx[0 : wrap])), axis=0)
                 
                 # generate batch
-                if self.all_ims != None and len(self.all_ims) == len(self.names):
-                    X = [self.all_ims[k] for k in indices]
-                    Y = [self.all_labels[k] for k in indices]
+                #if self.all_ims != None and len(self.all_ims) == len(self.names):
+                #    X = [self.all_ims[k] for k in indices]
+                #    Y = [self.all_labels[k] for k in indices]
+                #else:
+                cur_names = [self.names[k] for k in indices]
+                X = []
+                Y = []
+                for name in cur_names:
+                    im = np.load(self.ims_path + '/' + name + self.im_extension)
+                    coords = np.load(self.coords_path + '/' + name + self.label_extension)
+                    coords = self.preprocessCoords(coords)
+                    label = self.getLabel(coords, im)
+                    Y.append(label)
+                    X.append([im] + label)
+                
+                # in the case of multiple outputs
+                if isinstance(Y[0], tuple):
+                    raise ValueError('Please use a list for multiple outputs')
+                if isinstance(Y[0], list):
+                    Y = utils.transposeList(Y)
+                    Y = [np.array(output_batch_type) for output_batch_type in Y]
                 else:
-                    cur_names = [self.names[k] for k in indices]
-                    X = []
-                    Y = []
-                    for name in cur_names:
-                        im = np.load(self.ims_path + '/' + name + self.im_extension)
-                        X.append(im)
-                        coords = np.load(self.coords_path + '/' + name + self.label_extension)
-                        coords = self.preprocessCoords(coords)
-                        Y.append(self.getLabel(coords, im))
-                    
-                    # in the case of multiple outputs
-                    if isinstance(Y[0], tuple):
-                        raise ValueError('Please use a list for multiple outputs')
-                    if isinstance(Y[0], list):
-                        Y = utils.transposeList(Y)
-                        Y = [np.array(output_batch_type) for output_batch_type in Y]
-                    else:
-                        Y = np.array(Y)
-                yield np.array(X), Y
+                    Y = np.array(Y)
+
+                X = utils.transposeList(X)
+                X = [np.array(in_array) for in_array in X]
+
+                # X also has the labels appended to itself, in case the model needs access to them internally
+                # as part of/before computing the loss (https://github.com/keras-team/keras/issues/4781). 
+                yield (X, [Y[0], Y[0]])
+                #yield (X, Y[0])
 
 
 class MaskBatchGenerator(BatchGenerator):

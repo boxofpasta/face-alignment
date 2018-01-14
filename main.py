@@ -168,19 +168,19 @@ if __name__ == '__main__':
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
     factory = ModelFactory.ModelFactory()
-    model = factory.getLipMasker(alpha=0.3)
+    #model = factory.getLipMasker(alpha=0.3)
     #model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
-    #model = factory.getSaved('models/tmp/fully_connected_025.h5')
+    model = factory.getSaved('models/tmp/lip_masker_030.h5')
     train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train', factory.mask_side_len)
     #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
 
     model.fit_generator(generator=train_batch_generator.generate(),
                         steps_per_epoch=train_batch_generator.steps_per_epoch,
-                        epochs=30)
+                        epochs=1)
 
-    model.save('models/tmp/lip_masker_025.h5')
+    model.save('models/tmp/lip_masker_030.h5')
     if notify_training_complete:
         from google.cloud import error_reporting
         client = error_reporting.Client()
