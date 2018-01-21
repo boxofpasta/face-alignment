@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-#matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -41,6 +41,28 @@ def trySavedFullyConnected(path):
         label = np.reshape(label, (194, 2))
         label *= 224
         utils.visualizeCoords(im, label)
+
+def tryLipMasker(model, batch_generator, sample_names):
+    for sample_name in sample_names:
+        im, labels = batch_generator.getPair(sample_name)
+        labels = [np.array([label]) for label in labels]
+        mask_gt = labels[1][0]
+        #labes[1][0] = np.expand_dims(labels[1][0], axis=-1)
+        x = [np.array([im])] + labels
+        mask_loss, bbox_loss, bbox_coords, masks = model.predict(x, batch_size=1)
+        #masks[0] = np.squeeze(masks[0])
+        #masks[0] = np.squeeze(masks[0])
+        #plt.imshow(masks[0])
+        #plt.show()
+        #utils.visualizeBboxes(im, bbox_coords)
+        #masks[0] = utils.sigmoid(masks[0])
+        helenUtils.visualizeMask(im, masks[0], 224)
+        helenUtils.visualizeMask(im, masks[0], 56)
+        plt.imshow(masks[0][:,:,0])
+        plt.show()
+    
+        #helenUtils.visualizeMask(im, mask_gts[0], 224)
+        #helenUtils.visualizeMask(im, mask_gts[0], 28)
 
 def visualizeHeatmaps(sample_names=[]):
     pdfs = utils.getGaussians(10000, 56)
@@ -158,9 +180,11 @@ if __name__ == '__main__':
     #sess = K.get_session()
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
     #K.set_session(sess)
+    train = False
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
+    #helenUtils.trySerializedFolder('data/train_ibug')
     #visualizeSamples('data/test')
     #model = get_saved_model('models/fully_connected_v2.h5')
     #print get_avg_test_error(model, 'data/test')
@@ -171,20 +195,24 @@ if __name__ == '__main__':
     #model = factory.getLipMasker(alpha=0.3)
     #model = factory.getFullyConnected()
     #model = factory.getBboxRegressor()
-    model = factory.getSaved('models/tmp/lip_masker_030.h5')
-    train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train', factory.mask_side_len)
+    model = factory.getSaved('models/lip_masker_030_zoomed.h5')
+    #model = None
+    train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train_ibug', factory.mask_side_len)
     #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
+    tryLipMasker(model, train_batch_generator, samples)
 
-    model.fit_generator(generator=train_batch_generator.generate(),
-                        steps_per_epoch=train_batch_generator.steps_per_epoch,
-                        epochs=1)
+    if train:
+        model.fit_generator(generator=train_batch_generator.generate(),
+                            steps_per_epoch=train_batch_generator.steps_per_epoch,
+                            epochs=240)
 
-    model.save('models/tmp/lip_masker_030.h5')
-    if notify_training_complete:
-        from google.cloud import error_reporting
-        client = error_reporting.Client()
-        client.report('Training complete!')
+        model.save('models/tmp/lip_masker_030_zoomed.h5')
+        if notify_training_complete:
+            from google.cloud import error_reporting
+            client = error_reporting.Client()
+            client.report('Training complete!')
+    
     """
     for fname in os.listdir('downloads/samples'):
         im = scipy.misc.imread('downloads/samples/' + fname)

@@ -6,6 +6,7 @@ import json
 import time
 import sys
 import BatchGenerator
+from keras import optimizers
 from keras.layers import Dense, Reshape, BatchNormalization, Flatten
 from keras.layers import Dropout, Conv2DTranspose, Lambda
 from keras.models import Model, Sequential
@@ -32,7 +33,7 @@ class ModelFactory:
         self.im_height = 224
         self.coords_sparsity = 1
         self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
-        self.mask_side_len = 28
+        self.mask_side_len = 56
         self.epsilon = 1E-5
 
     def getSaved(self, path):
@@ -134,7 +135,7 @@ class ModelFactory:
 
         # labels to be set as inputs as well
         bbox_gts = Input(shape=([4]))
-        mask_gts = Input(shape=(self.im_height, self.im_width))
+        mask_gts = Input(shape=(self.im_height, self.im_width, 1))
 
         x = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = BatchNormalization()(x)
@@ -161,42 +162,54 @@ class ModelFactory:
 
         # Mask head: 
         # https://arxiv.org/pdf/1703.06870.pdf
-        a = layerUtils.CropAndResize(7)([x, b])
+        #a = layerUtils.CropAndResize(7)([x, b])
+        #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
+        a = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
         a = layerUtils.depthwiseConvBlock(a, 512 * alpha, 1024 * alpha)
         a = layerUtils.depthwiseConvBlock(a, 1024 * alpha, 1024 * alpha)
 
-        # output is 14 x 14
-        a = Conv2DTranspose(int(128 * alpha), kernel_size=(3, 3),
+        # output is 28 x 28
+        conv_transpose_depth = 128
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
                 strides=(2, 2),
                 activation='relu',
                 padding='same',
                 data_format='channels_last')(a)
         for i in range(3):
-            a = layerUtils.depthwiseConvBlock(a, 128 * alpha, 128 * alpha)
+            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
 
-        # output is 28 x 28
-        a = Conv2DTranspose(int(128 * alpha), kernel_size=(3, 3),
+        # output is 56 x 56
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
                 strides=(2, 2),
                 activation='relu',
                 padding='same',
                 data_format='channels_last')(a)
-        a = layerUtils.depthwiseConvBlock(a, 128 * alpha, 1)
-        a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
+        a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha, 1)
+        #a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
         if input_tensor is not None:
             inputs = get_source_inputs(input_tensor)
         else:
             inputs = img_input
 
-        masks = Lambda(lambda a: a, name='mask')(a)
-        bbox_coords = Lambda(lambda b: b, name='bbox')(b)
-        #mask_loss = Lambda(self.maskSigmoidLoss, name='mask_loss', arguments={'preds':masks, 'bboxes':bbox_coords})(mask_gts)
-        #bbox_loss = Lambda(self.squaredDistanceLoss, name='bbox_loss', arguments={'preds':bbox_coords})(bbox_gts)
-        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask')([mask_gts, masks, bbox_coords])
-        bbox_loss = layerUtils.SquaredDistanceLossLayer(name='bbox')([bbox_gts, bbox_coords])
-        total_loss = Lambda(lambda(l1, l2) : l1 + l2)([mask_loss, bbox_loss])
+        # a is the unnormalized bboxes
+        masks = Activation('sigmoid', name='masks')(a)
+        bboxes = Lambda(lambda b: b, name='bboxes')(b)
+        
+        #mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
 
-        model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bbox_coords, masks])
-        model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer='adam')
+        # try to generate ground truth masks (which were obtained from ground truth crops)
+        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bbox_gts])
+        mask_gts_cropped = layerUtils.CropAndResize(56)([mask_gts, bbox_gts])
+        mask_gts_cropped = Lambda(lambda a: K.squeeze(a, axis=-1))(mask_gts_cropped)
+        bbox_loss = layerUtils.SquaredDistanceLossLayer(name='bbox_obj')([bbox_gts, bboxes])
+        #total_loss = Lambda(lambda(l1, l2) : l1 + l2)([mask_loss, bbox_loss])
+
+        #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, mask_gts_cropped])
+        model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, masks])
+        optimizer = optimizers.adam(lr=1E-4)
+        model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
+        #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss])
+        #model.compile(loss=[self.identityLoss], optimizer='adam')
         #model.summary()
         return model
 
@@ -220,7 +233,7 @@ class ModelFactory:
             return tf.reduce_sum(cross_entropy)
         return maskSigmoidLossHelper"""
     def identityLoss(self, labels, preds):
-        return preds
+        return tf.reshape(tf.reduce_sum(preds), (1,))
 
     def maskSigmoidLoss(self, labels, preds, bboxes):
         labels = tf.expand_dims(labels, axis=-1)

@@ -116,8 +116,10 @@ class BatchGenerator:
 
                 # X also has the labels appended to itself, in case the model needs access to them internally
                 # as part of/before computing the loss (https://github.com/keras-team/keras/issues/4781). 
-                yield (X, [Y[0], Y[0]])
-                #yield (X, Y[0])
+                # The second part of the tuple is just a bunch of dummy arrays right now.
+                zeros = np.zeros((self.batch_size))
+                yield (X, [zeros, zeros])
+                #yield (X, Y[1])
 
 
 class MaskBatchGenerator(BatchGenerator):
@@ -137,11 +139,11 @@ class MaskBatchGenerator(BatchGenerator):
 
         # need lip_coords in pixel-coordinate units for generating masks
         lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords))).astype(int)
-        lip_coords = [tuple(lip_coord) for lip_coord in lip_coords]
         mask = utils.getMask([lip_coords], (len(im), len(im[0])), (len(im), len(im[0])))
+        mask = np.expand_dims(mask, axis=-1)
         
         # bbox coords
         lip_coords_normalized = helenUtils.getLipCoords(coords)
         bbox = utils.getBbox(lip_coords_normalized)
-        bbox = utils.getExpandedBbox(bbox, 0.5, 0.5)
+        #bbox = utils.getExpandedBbox(bbox, 0.5, 0.5)
         return [bbox, mask]

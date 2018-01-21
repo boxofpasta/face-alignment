@@ -16,8 +16,7 @@ class CropAndResize(Layer):
     def call(self, inputs):
         x, boxes = inputs
         batch_dim = tf.shape(boxes)[0]
-        #indices = tf.linspace(0.0, tf.cast(batch_dim - 1, tf.float32), batch_dim)
-        indices = tf.linspace(0.0, tf.cast(49, tf.float32), 50)
+        indices = tf.range(0, tf.cast(batch_dim, tf.float32), 1)
         indices = tf.cast(indices, tf.int32)
         crops = tf.image.crop_and_resize(x, boxes, indices, tf.constant(self.output_dim))
         return crops
@@ -39,14 +38,34 @@ class MaskSigmoidLossLayer(Layer):
 
     def call(self, inputs):
         labels, preds, bboxes = inputs
-        labels = tf.expand_dims(labels, axis=-1)
+        #labels = tf.expand_dims(labels, axis=-1)
         cropped_labels = CropAndResize(self.mask_side_len)([labels, bboxes])
-        cropped_labels = tf.squeeze(cropped_labels)
+
+        # should just be single channel images
+        cropped_labels = tf.squeeze(cropped_labels, axis=-1)
+        preds = tf.squeeze(preds, axis=-1)
+        
+        """batch_dim = tf.shape(bboxes)[0]
+        indices = tf.range(0, tf.cast(batch_dim, tf.float32), 1)
+        indices = tf.cast(indices, tf.int32)
+        mask_dims = [self.mask_side_len, self.mask_side_len]
+        cropped_labels = tf.image.crop_and_resize(labels, bboxes, indices, tf.constant(mask_dims))
+        cropped_labels = tf.squeeze(cropped_labels)"""
+        
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=cropped_labels)
-        return tf.reduce_sum(cross_entropy)
+        
+        """labels = tf.expand_dims(labels, axis=-1)
+        labels = tf.image.resize_images(labels, (self.mask_side_len, self.mask_side_len))
+        labels = tf.squeeze(labels)
+        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)"""
+
+        #loss = tf.reshape(tf.reduce_sum(cross_entropy), (1,))
+        return tf.expand_dims(tf.reduce_sum(cross_entropy,axis=[1,2]), axis=1)
+        #return tf.reduce_sum(cross_entropy)
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0][0],1)
+        #return (1,)
 
     def get_config(self):
         config = {'mask_side_len': self.mask_side_len}
@@ -61,7 +80,11 @@ class SquaredDistanceLossLayer(Layer):
 
     def call(self, inputs):
         labels, preds = inputs
-        return tf.reduce_sum(tf.square(labels - preds))
+        batch_dim = tf.shape(labels)[0]
+        labels = tf.reshape(labels, (batch_dim,-1))
+        preds = tf.reshape(preds, (batch_dim,-1))
+        return 0.0 * tf.expand_dims(tf.reduce_sum(tf.square(labels - preds), axis=1), axis=1)
+        #return tf.reduce_sum(tf.square(labels - preds))
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0][0],1)

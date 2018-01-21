@@ -54,45 +54,83 @@ def getAllData(path):
 
     return (all_ims, all_coords)
 
+class ImagesReader:
+    def __init__(self, path, extension, mem_limit=1000):
+        """
+        Parameters
+        ----------
+        mem_limit: 
+            The maximum amount of images to read into RAM, in MB.
+        """
+        self.path = path
+        self.extension = extension
+        self.mem_limit = mem_limit
+        self.all_names = getAllSampleNames(self.path, self.extension)
+        self.cur = 0
+        self.complete = False
 
-def processData(props, targ_im_len, sample_names=None, ibug_version=False):
+    def reset(self):
+        self.cur = 0
+        self.complete = False
+
+    def read(self, sample_names=None):
+        """
+        Reads images until either done or RAM limit exceeded (for a single invocation, not aware of others).
+        
+        Returns
+        -------
+        (ims, names). Each of them is a list.
+        """
+        cur_usage = 0
+        ims = []
+        names = []
+        for i in range(self.cur, len(self.all_names)):
+            cur_im = scipy.misc.imread(self.path + '/' + self.all_names[i] + self.extension)
+            cur_usage += sys.getsizeof(cur_im)
+            ims.append(cur_im)
+            names.append(self.all_names[i])
+            utils.informProgress(i, len(self.all_names))
+            self.cur += 1
+            if cur_usage >= self.mem_limit * 1024 * 1024:
+                print('    RAM limit of ' + str(self.mem_limit) + 'MB has been exceeded for this invocation')
+                break
+        
+        if self.cur >= len(self.all_names):
+            self.complete = True
+            utils.informProgress(1, 1)
+
+        return ims, names
+
+
+
+def processData(ims, coords, targ_im_len):
     """
     Parameters
     ----------
-    props: 
-        Instance of DatasetProps. props.im_paths specifies the folders to read from.
-    targ_im_len: 
-        The target image width and height. If -1, won't resize or warp.
-    sample_names: 
-        Specific samples to read from.
-    ibug_version: 
-        Set to true if using data from https://ibug.doc.ic.ac.uk/resources/facial-point-annotations/.
-        otherwise the data should be from http://www.ifp.illinois.edu/~vuongle2/helen/.
+    Both ims and coords should be dicts. A key exists in ims iff it exists in coords.
+    ims and coords will be modified by reference.
 
-    Returns
-    -------
-    (ims, labels)
     """
 
-    all_ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
-    all_coords = readCoordsHelen(props.coords_path, props.coords_extension, sample_names=sample_names, ibug_version=ibug_version)
+    #ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
+    #coords = readCoordsHelen(props.coords_path, props.coords_extension, sample_names=sample_names, ibug_version=ibug_version)
 
     if targ_im_len != -1:
         print('\n\nResizing samples ...')
         iter = 0
-        for name in all_ims:
+        for name in ims:
             if targ_im_len != -1:
-                im, coords = cropPair(all_ims[name], all_coords[name])
-                im, coords = resizePair(im, coords, targ_im_len, targ_im_len)
-                all_coords[name] = normalizeCoords(coords, targ_im_len, targ_im_len)
-                all_ims[name] = im
-            utils.informProgress(iter, len(all_ims))
+                im, single_coords = cropPair(ims[name], coords[name])
+                im, single_coords = resizePair(im, single_coords, targ_im_len, targ_im_len)
+                coords[name] = normalizeCoords(single_coords, targ_im_len, targ_im_len)
+                ims[name] = im
+            utils.informProgress(iter, len(ims))
             iter += 1
         utils.informProgress(1,1)
     else:
         print('\n\nNo target dimension provided, not resizing.')
 
-    return all_ims, all_coords
+    return ims, coords
     #""" data centering """
     #all_ims = np.array(all_ims)
     #mean_im = np.average(all_ims, axis=0)
@@ -131,8 +169,8 @@ def serializeData(all_ims, all_coords, npy_path, ibug_version=False):
 
 def normalizeCoords(coords, im_width, im_height):
     for coord in coords:
-        coord[0] /= (im_height - 1)
-        coord[1] /= (im_width - 1)
+        coord[1] /= (im_height - 1)
+        coord[0] /= (im_width - 1)
     return coords
 
 #def denormalizeCoords(coords, im_width, im_height):   
@@ -143,21 +181,23 @@ def resizePair(im, label, targ_width, targ_height):
     scale_x = float(targ_width) / cur_width
     scale_y = float(targ_height) / cur_height
     for coords in label:
-        coords[0] = coords[0] * scale_x
-        coords[1] = coords[1] * scale_y
+        coords[0] = coords[0] * scale_y
+        coords[1] = coords[1] * scale_x
     resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_AREA)
     return [resized, label]
 
 def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
+    lip_coords = getLipCoords(label)
     bbox = utils.getBbox(label)
+    #bbox = utils.getBbox(lip_coords)
     bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
     label[:,0] -= bbox[0]
     label[:,1] -= bbox[1]
-    l = int(max(0, bbox[0]))
-    r = int(min(len(im[0]), bbox[2]+1))
-    t = int(max(0, bbox[1]))
-    b = int(min(len(im), bbox[3]+1))
+    l = int(max(0, bbox[1]))
+    r = int(min(len(im[0]), bbox[3]+1))
+    t = int(max(0, bbox[0]))
+    b = int(min(len(im), bbox[2]+1))
     im = im[t:b, l:r]
     return [im, label]
 
@@ -180,6 +220,23 @@ def getOrdered(ims, labels):
         ims_ordered.append(ims[name])
     return [ims_ordered, labels_ordered]
 
+def getAllSampleNames(path, extension):
+    """
+    Parameters
+    ----------
+    path: 
+        Path to folder with all the images.
+    
+    Returns
+    -------
+        List of all sample names.
+    """
+    fnames_set = set()
+    for fname in os.listdir(path):
+        if fname.endswith(extension):
+            fnames_set.add(fname[:-len(extension)])
+    return list(fnames_set)
+
 
 def readImagesHelen(path, extension, sample_names=None):
     """
@@ -196,8 +253,6 @@ def readImagesHelen(path, extension, sample_names=None):
     -------
         dictionary of images, with key being filename without extension
     """
-
-    print('Reading images ...')
     ims = {}
 
     if sample_names == None:
@@ -244,8 +299,11 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                         for s in lines[i].split():
                             if utils.isNumber(s):
                                 coords.append(float(s))
+                        
                         if len(coords) == 2:
-                            cur_labels.append(coords)
+
+                            # want y, x because tensorflow likes it this way
+                            cur_labels.append(list(reversed(coords)))
                     labels[key] = cur_labels
             else:
                 key = fname[:-len(extension)]
@@ -253,9 +311,61 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                     cur_labels = []
                     for i in range(3, len(lines)-1):
                         coords = [float(s) for s in lines[i].split()]
-                        cur_labels.append(coords)
+
+                        # want y, x because tensorflow likes it this way
+                        cur_labels.append(list(reversed(coords)))
                     labels[key] = cur_labels
     return labels
 
+
 def getLipCoords(coords):
+    """
+    Only works for the ibug annotated version currently.
+    Parameters
+    ----------
+    coords: 
+        Should have shape (num_coords, 2).
+    """
     return coords[48:60]
+
+def trySerializedSample(npy_path, name, targ_im_len):
+    im = np.load(npy_path + '/ims/' + name + '.npy')
+    if targ_im_len == -1:
+        factor = 1
+    else:
+        factor = targ_im_len-1
+    label = np.load(npy_path + '/coords/' + name + '.npy')
+    label *= factor
+    """
+    mask = np.load(npy_path + '/masks/' + name + '.npy')
+    mask = (80 * mask).astype(np.uint8)
+    rem = 255 - im[:,:,1]
+    im[:,:,1] += np.minimum(rem, mask)
+    """
+    reshaped_labels = np.reshape(label, (-1, 2))
+    lip_coords = getLipCoords(reshaped_labels)
+    shape = (targ_im_len, targ_im_len)
+    mask = utils.getMask([lip_coords], shape, shape)
+    mask = (80 * mask).astype(np.uint8)
+    rem = 255 - im[:,:,1]
+    im[:,:,1] += np.minimum(rem, mask)
+    utils.visualizeCoords(im, label)
+
+def visualizeMask(im, mask, targ_im_len=-1):
+    if targ_im_len != -1:
+        im_resize_method = cv2.INTER_CUBIC if targ_im_len > len(im) else cv2.INTER_AREA
+        mask_resize_method = cv2.INTER_CUBIC if targ_im_len > len(mask) else cv2.INTER_AREA 
+        im = cv2.resize(im, (targ_im_len, targ_im_len), interpolation=im_resize_method)
+        mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=mask_resize_method)
+
+    mask = (80 * mask).astype(np.uint8)
+    rem = 255 - im[:,:,1]
+    im[:,:,1] += np.minimum(rem, mask)
+    plt.imshow(im)
+    plt.show()
+
+def trySerializedFolder(npy_path, targ_im_len):
+    with open(npy_path + '/names.json') as fp:
+        names = json.load(fp)
+    for name in names:
+        trySerializedSample(npy_path, name, targ_im_len)

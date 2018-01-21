@@ -76,6 +76,22 @@ def coordsToHeatmapsFast(coords, pdfs):
         heatmaps.append(heatmap)
     return heatmaps
 
+def getDictFromLists(a, b):
+    """
+    Parameters
+    ----------
+    a: 
+        The keys.
+    b: 
+        The values. Must be of the same length as b.
+    """
+    if len(a) != len(b):
+        raise ValueError('Must be of the same length')
+    c = {}
+    for i in range(len(a)):
+        c[a[i]] = b[i]
+    return c
+
 def coordsToHeatmaps(coords, elms_per_side, stddev=0.01):
     """
     Parameters
@@ -117,8 +133,8 @@ def visualizeCoords(im, coords, special_indices=[]):
     ax.imshow(im)
     radius = 0.003 * len(im)
     for i in range(0, len(coords)):
-        x = coords[i][0]
-        y = coords[i][1]
+        x = coords[i][1]
+        y = coords[i][0]
         if i in special_indices:
             circ = Circle((x, y), radius, color='red')
         else:
@@ -128,6 +144,7 @@ def visualizeCoords(im, coords, special_indices=[]):
 
 def getMask(polygons, src_dims, dst_dims):
     """
+    https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
     Parameters
     ----------
     polygons: 
@@ -140,9 +157,13 @@ def getMask(polygons, src_dims, dst_dims):
     -------
         Returns bitmask with all pixels within polygons being 1.0, and outside being 0.0.
     """
-    img = Image.new('L', src_dims, 0)
+    # expand more for higher quality masks
+    scale_factor = 4
+    img = Image.new('L', (src_dims[0] * scale_factor, src_dims[1] * scale_factor), 0)
+
     for polygon in polygons:
-        ImageDraw.Draw(img).polygon(polygon, outline=1, fill=1)
+        tupled = [tuple(reversed(tuple(scale_factor * coord))) for coord in polygon]
+        ImageDraw.Draw(img).polygon(tupled, outline=1, fill=1)
     img = np.array(img).astype(float)
     return cv2.resize(img, dst_dims, interpolation=cv2.INTER_AREA)
 
@@ -150,12 +171,12 @@ def getBbox(coords):
     """
     Returns
     -------
-    Array with values ordered as such: [left, top, right, bottom]
+    Array with values ordered as such: [top, left, bottom, right]
     """
     coords = np.reshape(coords, (-1, 2))
-    x_vals = coords[:,0]
-    y_vals = coords[:,1]
-    bbox = np.array([np.min(x_vals), np.min(y_vals), np.max(x_vals), np.max(y_vals)])
+    x_vals = coords[:,1]
+    y_vals = coords[:,0]
+    bbox = np.array([np.min(y_vals), np.min(x_vals), np.max(y_vals), np.max(x_vals)])
     return bbox
 
 def getRandomlyExpandedBbox(bbox, ratio_low, ratio_high):
@@ -181,16 +202,16 @@ def getExpandedBbox(bbox, ratio_x, ratio_y):
     ratio_x: 
         E.g value of 1.0 means 100% of max(width, height) added as padding.
     """
-    width = bbox[2] - bbox[0]
-    height = bbox[3] - bbox[1]
+    width = bbox[3] - bbox[1]
+    height = bbox[2] - bbox[0]
     max_len = max(width, height)
     x_pad = 0.5 * ratio_x * max_len
     y_pad = 0.5 * ratio_y * max_len
     return np.array([
-        bbox[0] - x_pad,
-        bbox[1] - y_pad,
-        bbox[2] + x_pad,
-        bbox[3] + y_pad
+        bbox[0] - y_pad,
+        bbox[1] - x_pad,
+        bbox[2] + y_pad,
+        bbox[3] + x_pad
     ])
 
 def visualizeBboxes(im, boxes):
@@ -212,6 +233,8 @@ def visualizeBboxes(im, boxes):
         ax.plot([box[0], box[0]], [box[3], box[1]], '-', color=color)
     plt.show()
 
+def sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-x))
 
 def informProgress(iter, total):
     milestone = max(total / 100, 1)
