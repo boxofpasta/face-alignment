@@ -83,7 +83,7 @@ class SquaredDistanceLossLayer(Layer):
         batch_dim = tf.shape(labels)[0]
         labels = tf.reshape(labels, (batch_dim,-1))
         preds = tf.reshape(preds, (batch_dim,-1))
-        return 0.0 * tf.expand_dims(tf.reduce_sum(tf.square(labels - preds), axis=1), axis=1)
+        return tf.expand_dims(tf.reduce_sum(tf.square(labels - preds), axis=1), axis=1)
         #return tf.reduce_sum(tf.square(labels - preds))
 
     def compute_output_shape(self, input_shape):

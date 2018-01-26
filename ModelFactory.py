@@ -24,7 +24,7 @@ from keras.layers import Input, Convolution2D, \
     GlobalAveragePooling2D, Dense, BatchNormalization, Activation
 from keras.models import Model
 from keras.engine.topology import get_source_inputs
-from depthwise_conv2d import DepthwiseConvolution2D, DepthwiseConv2D
+from depthwise_conv2d import DepthwiseConvolution2D
 
 class ModelFactory:
 
@@ -39,7 +39,7 @@ class ModelFactory:
     def getSaved(self, path):
         print 'Loading model ...'
         model = load_model(path, custom_objects={
-            'squaredDistanceLoss': self.squaredDistanceLoss,
+            'squaredDistanceLoss': self.squaredDistanceLoss, 
             'pointMaskSoftmaxLoss': self.pointMaskSoftmaxLoss,
             'identityLoss': self.identityLoss,
             'maskSigmoidLoss': self.maskSigmoidLoss,
@@ -50,7 +50,7 @@ class ModelFactory:
             'percentageBboxDistanceLoss': self.percentageBboxDistanceLoss,
             'relu6': mobilenet.relu6,
             'DepthwiseConvolution2d': DepthwiseConvolution2D,
-            'DepthwiseConv2D': DepthwiseConv2D,
+            'DepthwiseConv2D': mobilenet.DepthwiseConv2D,
             'CropAndResize' : layerUtils.CropAndResize,
         })
         print 'COMPLETE'
@@ -62,11 +62,11 @@ class ModelFactory:
     ----------------------------------------------------------------
     """
 
-    def getFullyConnected(self):
+    def getFullyConnected(self, alpha=1.0):
 
         """ Mobilenet with the last layer replaced by coordinate regression """
         in_shape = (self.im_width, self.im_height, 3)
-        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape, alpha=0.25)
+        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape, alpha=alpha)
         x = base_model.output
         x = Flatten()(x)
         x = Dense(units=2 * self.num_coords, activation='linear')(x)
@@ -160,13 +160,22 @@ class ModelFactory:
         b = GlobalAveragePooling2D()(b)
         b = Dense(4)(b)
 
+        """
         # Mask head: 
         # https://arxiv.org/pdf/1703.06870.pdf
         #a = layerUtils.CropAndResize(7)([x, b])
         #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        a = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
-        a = layerUtils.depthwiseConvBlock(a, 512 * alpha, 1024 * alpha)
-        a = layerUtils.depthwiseConvBlock(a, 1024 * alpha, 1024 * alpha)
+        #a = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
+        """
+
+        # note to self: alternative to sharing features: just use a new fully-convolutional architecture 
+        a = layerUtils.CropAndResize(112)([img_input, b])
+        a = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
+        a = BatchNormalization()(a)
+        a = Activation('relu')(a)
+        a = layerUtils.depthwiseConvBlock(a, 32 * alpha, 64 * alpha, down_sample=True)
+        a = layerUtils.depthwiseConvBlock(a, 64 * alpha, 128 * alpha, down_sample=True)
+        a = layerUtils.depthwiseConvBlock(a, 128 * alpha, 128 * alpha)
 
         # output is 28 x 28
         conv_transpose_depth = 128
@@ -198,15 +207,15 @@ class ModelFactory:
         #mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
 
         # try to generate ground truth masks (which were obtained from ground truth crops)
-        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bbox_gts])
-        mask_gts_cropped = layerUtils.CropAndResize(56)([mask_gts, bbox_gts])
-        mask_gts_cropped = Lambda(lambda a: K.squeeze(a, axis=-1))(mask_gts_cropped)
+        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
+        #mask_gts_cropped = layerUtils.CropAndResize(self.mask_side_len)([mask_gts, bbox_gts])
+        #mask_gts_cropped = Lambda(lambda a: K.squeeze(a, axis=-1))(mask_gts_cropped)
         bbox_loss = layerUtils.SquaredDistanceLossLayer(name='bbox_obj')([bbox_gts, bboxes])
         #total_loss = Lambda(lambda(l1, l2) : l1 + l2)([mask_loss, bbox_loss])
 
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, mask_gts_cropped])
         model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, masks])
-        optimizer = optimizers.adam(lr=1E-4)
+        optimizer = optimizers.adam(lr=8E-4)
         model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss])
         #model.compile(loss=[self.identityLoss], optimizer='adam')

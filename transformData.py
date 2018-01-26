@@ -4,7 +4,7 @@ import scipy.misc
 import numpy as np
 import matplotlib
 import cv2
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -22,7 +22,7 @@ ibug_version = True
 use_small = False
 
 # takes only a small sample for testing purposes
-use_samples = True
+use_samples = False
 targ_im_len = 224
 
 im_extension = '.jpg'

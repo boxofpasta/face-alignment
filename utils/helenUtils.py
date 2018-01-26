@@ -28,8 +28,9 @@ class DatasetProps:
         self.im_path = im_path
         self.coords_path = coords_path
 
-def getNumCoords(coords_sparsity):
-    return int(np.ceil(194.0 / coords_sparsity))
+def getNumCoords(coords_sparsity, ibug=True):
+    num_points = 68 if ibug else 194
+    return int(np.ceil(float(num_points) / coords_sparsity))
 
 def getAllData(path):
     """
@@ -191,15 +192,20 @@ def cropPair(im, label):
     lip_coords = getLipCoords(label)
     bbox = utils.getBbox(label)
     #bbox = utils.getBbox(lip_coords)
+
+    # randomly expand facebox
     bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
     label[:,0] -= bbox[0]
     label[:,1] -= bbox[1]
+    im = getCropped(im, bbox)
+    return [im, label]
+
+def getCropped(im, bbox):
     l = int(max(0, bbox[1]))
     r = int(min(len(im[0]), bbox[3]+1))
     t = int(max(0, bbox[0]))
     b = int(min(len(im), bbox[2]+1))
-    im = im[t:b, l:r]
-    return [im, label]
+    return im[t:b, l:r]
 
 def getOrdered(ims, labels):
     """

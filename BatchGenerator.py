@@ -46,15 +46,18 @@ class BatchGenerator:
     def getPair(self, sample_name):
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
         coords = np.load(self.coords_path + '/' + sample_name + '.npy')
-        label = self.getLabel(self.preprocessCoords(coords), im)  
-        return im, label    
+        coords = self.preprocessCoords(coords)
+        label = self.getOutputs(coords, im)  
+        inputs = self.getInputs(coords, im)
+        return inputs, label    
 
     def getAllPairs(self):
-        all_ims, all_coords, all_masks = helenUtils.getAllData(path)
-        self.all_ims = all_ims
-        self.all_labels = [ self.getLabel(self.preprocessCoords(coords), all_ims[0]) for coords in all_coords]
-        self.all_labels = utils.transposeList(self.all_labels)
-        return self.all_ims, self.all_labels
+        print 'Not implemented yet'
+        #all_ims, all_coords, all_masks = helenUtils.getAllData(path)
+        #self.all_ims = all_ims
+        #self.all_labels = [ self.getOutputs(self.preprocessCoords(coords), all_ims[0]) for coords in all_coords]
+        #self.all_labels = utils.transposeList(self.all_labels)
+        #return self.all_ims, self.all_labels
 
     def numTotalSamples(self):
         return len(self.names)
@@ -62,8 +65,8 @@ class BatchGenerator:
     def preprocessCoords(self, coords):
         return coords[0::self.coords_sparsity]
 
-    def getLabel(self, coords, im):
-        return coords
+    def getOutputs(self, coords, im):
+        return [coords]
 
     def visualizeBatch(self):
         for im_batch, labels_batch in self.generate():
@@ -98,9 +101,12 @@ class BatchGenerator:
                     im = np.load(self.ims_path + '/' + name + self.im_extension)
                     coords = np.load(self.coords_path + '/' + name + self.label_extension)
                     coords = self.preprocessCoords(coords)
-                    label = self.getLabel(coords, im)
+                    label = self.getOutputs(coords, im)
+                    inputs = self.getInputs(coords, im)
                     Y.append(label)
-                    X.append([im] + label)
+                    X.append(inputs)
+                    #X.append([im])
+                    #X.append([im] + label)
                 
                 # in the case of multiple outputs
                 if isinstance(Y[0], tuple):
@@ -117,9 +123,11 @@ class BatchGenerator:
                 # X also has the labels appended to itself, in case the model needs access to them internally
                 # as part of/before computing the loss (https://github.com/keras-team/keras/issues/4781). 
                 # The second part of the tuple is just a bunch of dummy arrays right now.
-                zeros = np.zeros((self.batch_size))
-                yield (X, [zeros, zeros])
+                #zeros = np.zeros((self.batch_size))
+                yield (X, Y)
+                #yield (X, [zeros, zeros])
                 #yield (X, Y[1])
+                #yield (X, Y)
 
 
 class MaskBatchGenerator(BatchGenerator):
@@ -131,7 +139,7 @@ class MaskBatchGenerator(BatchGenerator):
         # pdfs cache for speeding up coord mask expansions (makes a big difference in training times)
         #self.pdfs = utils.getGaussians(10000, self.mask_side_len)
 
-    def getLabel(self, coords, im):
+    def getLabels(self, coords, im):
         """coords = np.reshape(coords, (self.num_coords, 2))
         heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
@@ -145,5 +153,12 @@ class MaskBatchGenerator(BatchGenerator):
         # bbox coords
         lip_coords_normalized = helenUtils.getLipCoords(coords)
         bbox = utils.getBbox(lip_coords_normalized)
-        #bbox = utils.getExpandedBbox(bbox, 0.5, 0.5)
+        bbox = utils.getExpandedBbox(bbox, 0.5, 0.5)
         return [bbox, mask]
+
+    def getInputs(self, coords, im):
+        return [im, self.getLabels(coords, im)]
+
+    def getOutputs(self, coords, im):
+        """ These are mock outputs to satisfy some of Keras' checks """
+        return [0, 0]

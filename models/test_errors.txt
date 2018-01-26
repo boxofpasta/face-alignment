@@ -15,6 +15,7 @@ what if more reference points helps convergence?
 lip_masker_030_zoomed_v1 train error with 128 depth transposed convs (360 epochs): 17686.7696
 lip_masker_030_zoomed_v2 train error with 256 depth transposed convs (240 epochs): 17722.7897
 
-lip_masker_030_zoomed train error (240 epochs): 12859.6017
+lip_masker_030_zoomed train error for 28x28 (240 epochs): 12859.6017
+lip_masker_030_zoomed train error for 56x56 (240 epochs): ~49500
 
 

@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -22,24 +22,16 @@ from keras.applications import mobilenet
 from tensorflow.python import debug as tf_debug
 
 
-def trySavedFullyConnected(path):
-    model = get_saved_model(path)
-    sample_paths = []
-    for fname in os.listdir('downloads/samples'):
-        if fname.endswith(('.jpg', '.png')):
-            sample_paths.append('downloads/samples/' + fname)
-
-    for path in sample_paths:
-        im = scipy.misc.imread(path)
-        im = cv2.resize(im, (224, 224), interpolation=cv2.INTER_CUBIC)
+def trySavedFullyConnected(model, batch_generator, sample_names):
+    for sample_name in sample_names:
+        im, label = batch_generator.getPair(sample_name)
 
         # alpha channel needs to be cutoff
-        if im.shape[2] > 3:
-           im = im[:,:,:3]
-
-        label = model.predict(np.array([im]), batch_size=1)
-        label = np.reshape(label, (194, 2))
-        label *= 224
+        #if im.shape[2] > 3:
+        #   im = im[:,:,:3]
+        labels = np.array(model.predict(np.array([im]), batch_size=1))
+        label = labels[0]
+        label *= len(im)
         utils.visualizeCoords(im, label)
 
 def tryLipMasker(model, batch_generator, sample_names):
@@ -47,6 +39,7 @@ def tryLipMasker(model, batch_generator, sample_names):
         im, labels = batch_generator.getPair(sample_name)
         labels = [np.array([label]) for label in labels]
         mask_gt = labels[1][0]
+        bbox_gt = labels[0][0]
         #labes[1][0] = np.expand_dims(labels[1][0], axis=-1)
         x = [np.array([im])] + labels
         mask_loss, bbox_loss, bbox_coords, masks = model.predict(x, batch_size=1)
@@ -56,10 +49,16 @@ def tryLipMasker(model, batch_generator, sample_names):
         #plt.show()
         #utils.visualizeBboxes(im, bbox_coords)
         #masks[0] = utils.sigmoid(masks[0])
-        helenUtils.visualizeMask(im, masks[0], 224)
-        helenUtils.visualizeMask(im, masks[0], 56)
-        plt.imshow(masks[0][:,:,0])
+        
+        c = np.zeros((56, 56, 3))
+        mask_gt = helenUtils.getCropped(mask_gt, 224 * bbox_gt)
+        mask_gt = cv2.resize(mask_gt, (56, 56), interpolation=cv2.INTER_AREA)
+        c[:,:,0] = masks[0][:,:,0]
+        c[:,:,1] = mask_gt
+        plt.imshow(c)
         plt.show()
+        #helenUtils.visualizeMask(im, masks[0], 224)
+        #helenUtils.visualizeMask(im, masks[0], 56)
     
         #helenUtils.visualizeMask(im, mask_gts[0], 224)
         #helenUtils.visualizeMask(im, mask_gts[0], 28)
@@ -180,7 +179,7 @@ if __name__ == '__main__':
     #sess = K.get_session()
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
     #K.set_session(sess)
-    train = False
+    train = True
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
@@ -192,22 +191,30 @@ if __name__ == '__main__':
     #model = get_saved_model('models/tmp/fully_conv.h5')
     
     factory = ModelFactory.ModelFactory()
-    #model = factory.getLipMasker(alpha=0.3)
-    #model = factory.getFullyConnected()
+    #model = factory.getLipMasker(alpha=0.5)
+    model = factory.getBboxRegressor()
+    #model = factory.getFullyConnected(alpha=0.5)
     #model = factory.getBboxRegressor()
-    model = factory.getSaved('models/lip_masker_030_zoomed.h5')
-    #model = None
-    train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train_ibug', factory.mask_side_len)
+    #model = factory.getSaved('models/fully_connected_v1.h5')
+    #model = factory.getSaved('models/lip_fc.h5')
+    #model = factory.getSaved('models/lip_masker_050.h5')
+    train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
+    #train_batch_generator = BatchGenerator.MaskBatchGenerator('data/train_ibug', factory.mask_side_len)
+    #train_batch_generator = BatchGenerator.BatchGenerator('data/train_ibug')
     #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
-    tryLipMasker(model, train_batch_generator, samples)
+    
+    if not train:
+        #trySavedFullyConnected(model, train_batch_generator, samples)
+        tryLipMasker(model, train_batch_generator, samples)
 
     if train:
         model.fit_generator(generator=train_batch_generator.generate(),
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
                             epochs=240)
 
-        model.save('models/tmp/lip_masker_030_zoomed.h5')
+        #model.save('models/tmp/lip_fc.h5')
+        model.save('models/tmp/lip_masker_sep_050.h5')
         if notify_training_complete:
             from google.cloud import error_reporting
             client = error_reporting.Client()
