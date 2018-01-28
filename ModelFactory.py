@@ -35,25 +35,34 @@ class ModelFactory:
         self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
         self.mask_side_len = 56
         self.epsilon = 1E-5
-
-    def getSaved(self, path):
-        print 'Loading model ...'
-        model = load_model(path, custom_objects={
+        self.custom_objects = {
             'squaredDistanceLoss': self.squaredDistanceLoss, 
             'pointMaskSoftmaxLoss': self.pointMaskSoftmaxLoss,
             'identityLoss': self.identityLoss,
             'maskSigmoidLoss': self.maskSigmoidLoss,
             'MaskSigmoidLossLayer': layerUtils.MaskSigmoidLossLayer,
+            'MaskSigmoidLossLayerNoCrop': layerUtils.MaskSigmoidLossLayerNoCrop,
             'SquaredDistanceLossLayer': layerUtils.SquaredDistanceLossLayer,
             'iouLoss': self.iouLoss,
             'scaledSquaredDistanceLoss': self.percentageBboxDistanceLoss,
             'percentageBboxDistanceLoss': self.percentageBboxDistanceLoss,
             'relu6': mobilenet.relu6,
             'DepthwiseConvolution2d': DepthwiseConvolution2D,
-            'DepthwiseConv2D': mobilenet.DepthwiseConv2D,
+            'DepthwiseConv2D': DepthwiseConvolution2D, #mobilenet.DepthwiseConv2D, # there seems to be a name conflict lol
             'CropAndResize' : layerUtils.CropAndResize,
-        })
-        print 'COMPLETE'
+            'Resize': layerUtils.Resize
+        }
+
+    def getSaved(self, path, frozen=False):
+        print 'Loading model ...'
+        if frozen:
+            model = load_model(path, custom_objects=self.custom_objects, compile=False)
+            for layer in model.layers:
+                layer.trainable = False
+            model.compile()
+        else:
+            model = load_model(path, custom_objects=self.custom_objects)
+        print 'Loading complete '
         return model
 
     """ 
@@ -86,7 +95,7 @@ class ModelFactory:
         x = Flatten()(x)
         x = Dense(units=4, activation='linear')(x)
         model = Model(inputs=base_model.input, outputs=x)
-        model.compile(loss=self.scaledSquaredDistanceLoss, optimizer='adam')
+        model.compile(loss=self.scaledSquaredDistanceBboxLoss, optimizer='adam')
         return model
 
     def getPointMasker(self):
@@ -113,7 +122,8 @@ class ModelFactory:
         model.compile(loss=self.pointMaskSoftmaxLoss, optimizer='adam')
         return model
 
-    def getLipMasker(self, alpha=1):
+    def getLipMasker(self, alpha_1=1, alpha_2=1):
+        
         input_tensor = None
         shallow = False
         input_shape = (self.im_height, self.im_width, 3)
@@ -137,26 +147,26 @@ class ModelFactory:
         bbox_gts = Input(shape=([4]))
         mask_gts = Input(shape=(self.im_height, self.im_width, 1))
 
-        x = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
+        x = Convolution2D(int(32 * alpha_1), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
-        x = layerUtils.depthwiseConvBlock(x, 32 * alpha, 64 * alpha)
-        x = layerUtils.depthwiseConvBlock(x, 64 * alpha, 128 * alpha, down_sample=True)
-        x = layerUtils.depthwiseConvBlock(x, 128 * alpha, 128 * alpha)
-        x = layerUtils.depthwiseConvBlock(x, 128 * alpha, 256 * alpha, down_sample=True)
-        x = layerUtils.depthwiseConvBlock(x, 256 * alpha, 256 * alpha)
-        x = layerUtils.depthwiseConvBlock(x, 256 * alpha, 512 * alpha, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 32 * alpha_1, 64 * alpha_1)
+        x = layerUtils.depthwiseConvBlock(x, 64 * alpha_1, 128 * alpha_1, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 128 * alpha_1, 128 * alpha_1)
+        x = layerUtils.depthwiseConvBlock(x, 128 * alpha_1, 256 * alpha_1, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 256 * alpha_1, 256 * alpha_1)
+        x = layerUtils.depthwiseConvBlock(x, 256 * alpha_1, 512 * alpha_1, down_sample=True)
 
         if not shallow:
             for _ in range(5):
-                x = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
+                x = layerUtils.depthwiseConvBlock(x, 512 * alpha_1, 512 * alpha_1)
 
         # End of backbone:
-        # Output dims are 14 x 14 x (512 * alpha)
+        # Output dims are 14 x 14 x (512 * alpha_1)
 
         # Bbox regressor head: 
-        b = layerUtils.depthwiseConvBlock(x, 512 * alpha, 1024 * alpha, down_sample=True)
-        b = layerUtils.depthwiseConvBlock(b, 1024 * alpha, 1024 * alpha)
+        b = layerUtils.depthwiseConvBlock(x, 512 * alpha_1, 1024 * alpha_1, down_sample=True)
+        b = layerUtils.depthwiseConvBlock(b, 1024 * alpha_1, 1024 * alpha_1)
         b = GlobalAveragePooling2D()(b)
         b = Dense(4)(b)
 
@@ -168,32 +178,51 @@ class ModelFactory:
         #a = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
         """
 
-        # note to self: alternative to sharing features: just use a new fully-convolutional architecture 
+        # note to self: alternative to sharing features -- just use a new fully-convolutional architecture 
         a = layerUtils.CropAndResize(112)([img_input, b])
-        a = Convolution2D(int(32 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
+        a = Convolution2D(int(32 * alpha_2), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
         a = BatchNormalization()(a)
         a = Activation('relu')(a)
-        a = layerUtils.depthwiseConvBlock(a, 32 * alpha, 64 * alpha, down_sample=True)
-        a = layerUtils.depthwiseConvBlock(a, 64 * alpha, 128 * alpha, down_sample=True)
-        a = layerUtils.depthwiseConvBlock(a, 128 * alpha, 128 * alpha)
+        a = layerUtils.depthwiseConvBlock(a, 32 * alpha_2, 64 * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, 64 * alpha_2, 128 * alpha_2, down_sample=True)
+        a = layerUtils.depthwiseConvBlock(a, 128 * alpha_2, 128 * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, 128 * alpha_2, 256 * alpha_2, down_sample=True)
+        a = layerUtils.depthwiseConvBlock(a, 256 * alpha_2, 256 * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, 256 * alpha_2, 512 * alpha_2, down_sample=True)
+        if not shallow:
+            for _ in range(5):
+                a = layerUtils.depthwiseConvBlock(a, 512 * alpha_2, 512 * alpha_2)
 
-        # output is 28 x 28
+        # 7x7
         conv_transpose_depth = 128
-        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
+        """a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
                 strides=(2, 2),
                 activation='relu',
                 padding='same',
-                data_format='channels_last')(a)
+                data_format='channels_last')(a)"""
+        a = layerUtils.resizeConvBlock(a, 512 * alpha_2, conv_transpose_depth * alpha_2)
         for i in range(3):
-            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
 
-        # output is 56 x 56
-        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
+        # 14x14
+        """a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
                 strides=(2, 2),
                 activation='relu',
                 padding='same',
-                data_format='channels_last')(a)
-        a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha, 1)
+                data_format='channels_last')(a)"""
+        a = layerUtils.resizeConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+        for i in range(3):
+            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+
+        # 28x28
+       """a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)"""
+        a = layerUtils.resizeConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, 1)
+
         #a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
         if input_tensor is not None:
             inputs = get_source_inputs(input_tensor)
@@ -215,8 +244,116 @@ class ModelFactory:
 
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, mask_gts_cropped])
         model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, masks])
-        optimizer = optimizers.adam(lr=8E-4)
+        optimizer = optimizers.adam(lr=3E-4)
         model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
+        #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss])
+        #model.compile(loss=[self.identityLoss], optimizer='adam')
+        #model.summary()
+        return model
+
+    def getLipMaskerZoomed(self, alpha=1):
+
+        # for bbox regressor
+        alpha_1 = alpha
+
+        # for mask cnn
+        alpha_2 = 1.0
+        input_tensor = None
+        shallow = False
+        input_shape = (self.im_height, self.im_width, 3)
+
+        # https://github.com/rcmalli/keras-mobilenet/blob/master/keras_mobilenet/mobilenet.py
+        input_shape = _obtain_input_shape(input_shape,
+                                        default_size=224,
+                                        min_size=96,
+                                        data_format=K.image_data_format(),
+                                        require_flatten=True)
+
+        if input_tensor is None:
+            img_input = Input(shape=input_shape)
+        else:
+            if not K.is_keras_tensor(input_tensor):
+                img_input = Input(tensor=input_tensor, shape=input_shape)
+            else:
+                img_input = input_tensor
+
+        # labels to be set as inputs as well
+        mask_gts = Input(shape=(self.im_height, self.im_width, 1))
+
+        """
+        # Mask head: 
+        # https://arxiv.org/pdf/1703.06870.pdf
+        #a = layerUtils.CropAndResize(7)([x, b])
+        #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
+        #a = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
+        """
+
+        # note to self: alternative to sharing features -- just use a new fully-convolutional architecture 
+        a = layerUtils.Resize(112)(img_input)
+        a = Convolution2D(int(32 * alpha_2), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
+        a = BatchNormalization()(a)
+        a = Activation('relu')(a)
+        a = layerUtils.depthwiseConvBlock(a, 32 * alpha_2, 64 * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, 64 * alpha_2, 128 * alpha_2, down_sample=True)
+        a = layerUtils.depthwiseConvBlock(a, 128 * alpha_2, 128 * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, 128 * alpha_2, 256 * alpha_2, down_sample=True)
+        a = layerUtils.depthwiseConvBlock(a, 256 * alpha_2, 256 * alpha_2)
+        a = layerUtils.depthwiseConvBlock(a, 256 * alpha_2, 512 * alpha_2, down_sample=True)
+        if not shallow:
+            for _ in range(5):
+                a = layerUtils.depthwiseConvBlock(a, 512 * alpha_2, 512 * alpha_2)
+
+        # 7x7
+        conv_transpose_depth = 128
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)
+        for i in range(3):
+            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+
+        # 14x14
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)
+        for i in range(3):
+            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+
+        # 28x28
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)
+        a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, 1)
+
+        #a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
+        if input_tensor is not None:
+            inputs = get_source_inputs(input_tensor)
+        else:
+            inputs = img_input
+
+        # a is the unnormalized bboxes
+        masks = Activation('sigmoid', name='masks')(a)
+        #bboxes = Lambda(lambda b: b, name='bboxes')(b)
+        
+        #mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
+
+        # try to generate ground truth masks (which were obtained from ground truth crops)
+        #mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
+        mask_loss = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len, name='mask_obj')([mask_gts, a])
+        #mask_gts_cropped = layerUtils.CropAndResize(self.mask_side_len)([mask_gts, bbox_gts])
+        #mask_gts_cropped = Lambda(lambda a: K.squeeze(a, axis=-1))(mask_gts_cropped)
+        #bbox_loss = layerUtils.SquaredDistanceLossLayer(name='bbox_obj')([bbox_gts, bboxes])
+        #total_loss = Lambda(lambda(l1, l2) : l1 + l2)([mask_loss, bbox_loss])
+
+        #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, mask_gts_cropped])
+        model = Model(inputs=[inputs, mask_gts], outputs=[mask_loss, masks])
+        optimizer = optimizers.adam(lr=4E-4)
+        model.compile(loss=[self.identityLoss, None], optimizer=optimizer)
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss])
         #model.compile(loss=[self.identityLoss], optimizer='adam')
         #model.summary()

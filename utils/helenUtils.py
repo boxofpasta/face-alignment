@@ -190,11 +190,12 @@ def resizePair(im, label, targ_width, targ_height):
 def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
     lip_coords = getLipCoords(label)
-    bbox = utils.getBbox(label)
-    #bbox = utils.getBbox(lip_coords)
+    #bbox = utils.getBbox(label)
+    bbox = utils.getBbox(lip_coords)
 
     # randomly expand facebox
-    bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
+    #bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
+    bbox = utils.getRandomlyExpandedBbox(bbox, 0.10, 1.0)
     label[:,0] -= bbox[0]
     label[:,1] -= bbox[1]
     im = getCropped(im, bbox)

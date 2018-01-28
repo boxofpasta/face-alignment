@@ -22,7 +22,7 @@ class BatchGenerator:
     """
     def __init__(self, path, coords_sparsity=1):
         self.batch_size = 50
-        self.names = []
+        self.all_names = []
 
         # essentially taking every self.sparsity points in the original coords
         self.coords_sparsity = int(coords_sparsity)
@@ -39,9 +39,9 @@ class BatchGenerator:
         self.label_extension = '.npy'
         
         with open(self.name_path) as fp:
-            self.names = json.load(fp)
+            self.all_names = json.load(fp)
 
-        self.steps_per_epoch = len(self.names) / self.batch_size
+        self.steps_per_epoch = len(self.all_names) / self.batch_size
 
     def getPair(self, sample_name):
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
@@ -60,7 +60,7 @@ class BatchGenerator:
         #return self.all_ims, self.all_labels
 
     def numTotalSamples(self):
-        return len(self.names)
+        return len(self.all_names)
 
     def preprocessCoords(self, coords):
         return coords[0::self.coords_sparsity]
@@ -77,24 +77,24 @@ class BatchGenerator:
         while(True):
 
             # epoch complete
-            num_batches = len(self.names) / self.batch_size
-            rand_idx = np.arange(0, len(self.names))
+            num_batches = len(self.all_names) / self.batch_size
+            rand_idx = np.arange(0, len(self.all_names))
             np.random.shuffle(rand_idx)
 
             for i in range(0, num_batches):
 
                 # get range of current batch
-                start = (i * self.batch_size) % len(self.names)
-                end = min(start + self.batch_size, len(self.names))
-                wrap = max(start + self.batch_size - len(self.names), 0)
+                start = (i * self.batch_size) % len(self.all_names)
+                end = min(start + self.batch_size, len(self.all_names))
+                wrap = max(start + self.batch_size - len(self.all_names), 0)
                 indices = np.concatenate((rand_idx[start : end], (rand_idx[0 : wrap])), axis=0)
                 
                 # generate batch
-                #if self.all_ims != None and len(self.all_ims) == len(self.names):
+                #if self.all_ims != None and len(self.all_ims) == len(self.all_names):
                 #    X = [self.all_ims[k] for k in indices]
                 #    Y = [self.all_labels[k] for k in indices]
                 #else:
-                cur_names = [self.names[k] for k in indices]
+                cur_names = [self.all_names[k] for k in indices]
                 X = []
                 Y = []
                 for name in cur_names:
@@ -130,7 +130,7 @@ class BatchGenerator:
                 #yield (X, Y)
 
 
-class MaskBatchGenerator(BatchGenerator):
+class MaskAndBboxBatchGenerator(BatchGenerator):
 
     def __init__(self, path, mask_side_len):
         BatchGenerator.__init__(self, path)
@@ -157,8 +157,40 @@ class MaskBatchGenerator(BatchGenerator):
         return [bbox, mask]
 
     def getInputs(self, coords, im):
-        return [im, self.getLabels(coords, im)]
+        inputs = [im]
+        labels = self.getLabels(coords, im)
+        for label in labels:
+            inputs += [label]
+        return inputs
 
     def getOutputs(self, coords, im):
         """ These are mock outputs to satisfy some of Keras' checks """
         return [0, 0]
+
+
+class MaskBatchGenerator(BatchGenerator):
+
+    def __init__(self, path, mask_side_len):
+        BatchGenerator.__init__(self, path)
+        self.mask_side_len = mask_side_len
+
+    def getLabels(self, coords, im):
+        """coords = np.reshape(coords, (self.num_coords, 2))
+        heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
+        heatmap = np.moveaxis(heatmap, 0, -1)
+        return heatmap"""
+
+        # need lip_coords in pixel-coordinate units for generating masks
+        lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords))).astype(int)
+        mask = utils.getMask([lip_coords], (len(im), len(im[0])), (len(im), len(im[0])))
+        mask = np.expand_dims(mask, axis=-1)
+        return mask
+
+    def getInputs(self, coords, im):
+        inputs = im
+        labels = self.getLabels(coords, im)
+        return [inputs, labels]
+
+    def getOutputs(self, coords, im):
+        """ These are mock outputs to satisfy some of Keras' checks """
+        return [0]

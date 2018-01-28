@@ -19,7 +19,7 @@ transform_test = False
 ibug_version = True
 
 # applies only if transform_train == True and ibug_version == False. For serializing just the helen_1 folder
-use_small = False
+use_small = True
 
 # takes only a small sample for testing purposes
 use_samples = False
@@ -46,7 +46,7 @@ if transform_train:
     if ibug_version:
         im_paths = ['downloads/helen_ibug/trainset']
         coords_path = im_paths[0]
-        npy_path = 'data/train_ibug'
+        npy_path = 'data/train_ibug_lip_zoomed'
     else:
         coords_path = 'downloads/annotation'
         if use_small:

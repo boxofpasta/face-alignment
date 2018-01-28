@@ -167,6 +167,9 @@ def getMask(polygons, src_dims, dst_dims):
     img = np.array(img).astype(float)
     return cv2.resize(img, dst_dims, interpolation=cv2.INTER_AREA)
 
+def printTensorShape(tensor):
+    print tensor.get_shape().as_list()
+
 def getBbox(coords):
     """
     Returns
