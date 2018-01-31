@@ -129,6 +129,16 @@ class BatchGenerator:
                 #yield (X, Y[1])
                 #yield (X, Y)
 
+class PointsBatchGenerator(BatchGenerator):
+    def __init__(self, path):
+        BatchGenerator.__init__(self, path)
+    
+    def getInputs(self, coords, im):
+        return [im]
+
+    def getOutputs(self, coords, im):
+        return [helenUtils.getLipCoords(coords)]
+
 
 class MaskAndBboxBatchGenerator(BatchGenerator):
 

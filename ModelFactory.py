@@ -8,7 +8,7 @@ import sys
 import BatchGenerator
 from keras import optimizers
 from keras.layers import Dense, Reshape, BatchNormalization, Flatten
-from keras.layers import Dropout, Conv2DTranspose, Lambda
+from keras.layers import Dropout, Conv2DTranspose, Lambda, Concatenate
 from keras.models import Model, Sequential
 from keras.models import load_model
 from keras.applications import mobilenet
@@ -72,17 +72,56 @@ class ModelFactory:
     """
 
     def getFullyConnected(self, alpha=1.0):
+        alpha_1 = alpha
+        input_tensor = None
+        shallow = False
+        input_shape = (self.im_height, self.im_width, 3)
 
-        """ Mobilenet with the last layer replaced by coordinate regression """
-        in_shape = (self.im_width, self.im_height, 3)
-        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape, alpha=alpha)
-        x = base_model.output
-        x = Flatten()(x)
-        x = Dense(units=2 * self.num_coords, activation='linear')(x)
-        x = Reshape((self.num_coords, 2))(x)
-        model = Model(inputs=base_model.input, outputs=x)
+        # https://github.com/rcmalli/keras-mobilenet/blob/master/keras_mobilenet/mobilenet.py
+        input_shape = _obtain_input_shape(input_shape,
+                                        default_size=224,
+                                        min_size=96,
+                                        data_format=K.image_data_format(),
+                                        require_flatten=True)
 
-        model.compile(loss=self.squaredDistanceLoss, optimizer='adam')
+        if input_tensor is None:
+            img_input = Input(shape=input_shape)
+        else:
+            if not K.is_keras_tensor(input_tensor):
+                img_input = Input(tensor=input_tensor, shape=input_shape)
+            else:
+                img_input = input_tensor
+
+        x = Convolution2D(int(32 * alpha_1), (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = layerUtils.depthwiseConvBlock(x, 32 * alpha_1, 64 * alpha_1)
+
+        # 112x112
+        x = layerUtils.depthwiseConvBlock(x, 64 * alpha_1, 128 * alpha_1, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 128 * alpha_1, 128 * alpha_1)
+
+        # 56x56
+        x = layerUtils.depthwiseConvBlock(x, 128 * alpha_1, 256 * alpha_1, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 256 * alpha_1, 256 * alpha_1)
+
+        # 28x28
+        x = layerUtils.depthwiseConvBlock(x, 256 * alpha_1, 512 * alpha_1, down_sample=True)
+
+        if not shallow:
+            for _ in range(5):
+                x = layerUtils.depthwiseConvBlock(x, 512 * alpha_1, 512 * alpha_1)
+
+        # End of backbone:
+        # Output dims are 14 x 14 x (512 * alpha_1)
+        x = layerUtils.depthwiseConvBlock(x, 512 * alpha_1, 1024 * alpha_1, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 1024 * alpha_1, 1024 * alpha_1)
+        x = GlobalAveragePooling2D()(x)
+        x = Dense(units=24, activation='linear')(x)
+        x = Reshape((12, 2))(x)
+        model = Model(inputs=[img_input], outputs=[x])
+        optimizer = optimizers.adam(lr=3E-4)
+        model.compile(loss=self.squaredDistanceLoss, optimizer=optimizer)
         return model
 
     def getBboxRegressor(self):
@@ -151,10 +190,19 @@ class ModelFactory:
         x = BatchNormalization()(x)
         x = Activation('relu')(x)
         x = layerUtils.depthwiseConvBlock(x, 32 * alpha_1, 64 * alpha_1)
+
+        # 112x112
+        cf1 = x 
         x = layerUtils.depthwiseConvBlock(x, 64 * alpha_1, 128 * alpha_1, down_sample=True)
         x = layerUtils.depthwiseConvBlock(x, 128 * alpha_1, 128 * alpha_1)
+
+        # 56x56
+        cf2 = x
         x = layerUtils.depthwiseConvBlock(x, 128 * alpha_1, 256 * alpha_1, down_sample=True)
         x = layerUtils.depthwiseConvBlock(x, 256 * alpha_1, 256 * alpha_1)
+
+        # 28x28
+        cf3 = x
         x = layerUtils.depthwiseConvBlock(x, 256 * alpha_1, 512 * alpha_1, down_sample=True)
 
         if not shallow:
@@ -170,15 +218,23 @@ class ModelFactory:
         b = GlobalAveragePooling2D()(b)
         b = Dense(4)(b)
 
-        """
         # Mask head: 
         # https://arxiv.org/pdf/1703.06870.pdf
-        #a = layerUtils.CropAndResize(7)([x, b])
+        cf1_cropped = layerUtils.CropAndResize(28)([cf1, b]) # d = 64
+        cf2_cropped = layerUtils.CropAndResize(14)([cf2, b]) # d = 128
+        cf3_cropped = layerUtils.CropAndResize(7)([cf3, b]) # d = 256
+        a = layerUtils.CropAndResize(7)([x, b])
+
+        a = Concatenate(axis=-1)([a, cf1_cropped, cf2_cropped, cf3_cropped]) # d = 448 + 512 = 960
         #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
-        #a = layerUtils.depthwiseConvBlock(x, 512 * alpha, 512 * alpha)
-        """
+
+        #a = Concatenate()([a, cf3_cropped])
+        a = layerUtils.depthwiseConvBlock(a, 512 * alpha_1, 512 * alpha_1)
+        for i in range(2):
+            a = layerUtils.depthwiseConvBlock(a, 512 * alpha_1, 512 * alpha_1)
 
         # note to self: alternative to sharing features -- just use a new fully-convolutional architecture 
+        """
         a = layerUtils.CropAndResize(112)([img_input, b])
         a = Convolution2D(int(32 * alpha_2), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
         a = BatchNormalization()(a)
@@ -192,35 +248,44 @@ class ModelFactory:
         if not shallow:
             for _ in range(5):
                 a = layerUtils.depthwiseConvBlock(a, 512 * alpha_2, 512 * alpha_2)
+        """
 
         # 7x7
+        use_resize_conv = False
         conv_transpose_depth = 128
-        """a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
-                strides=(2, 2),
-                activation='relu',
-                padding='same',
-                data_format='channels_last')(a)"""
-        a = layerUtils.resizeConvBlock(a, 512 * alpha_2, conv_transpose_depth * alpha_2)
+        
+        if not use_resize_conv:
+            a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+                    strides=(2, 2),
+                    activation='relu',
+                    padding='same',
+                    data_format='channels_last')(a)
+        else:
+            a = layerUtils.resizeConvBlock(a, 14, 512 * alpha_2, conv_transpose_depth * alpha_2)
         for i in range(3):
             a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
 
         # 14x14
-        """a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+        if not use_resize_conv:
+            a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
                 strides=(2, 2),
                 activation='relu',
                 padding='same',
-                data_format='channels_last')(a)"""
-        a = layerUtils.resizeConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+                data_format='channels_last')(a)
+        else:
+            a = layerUtils.resizeConvBlock(a, 28, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
         for i in range(3):
             a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
 
         # 28x28
-       """a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
+        if not use_resize_conv:
+            a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
                 strides=(2, 2),
                 activation='relu',
                 padding='same',
-                data_format='channels_last')(a)"""
-        a = layerUtils.resizeConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
+                data_format='channels_last')(a)
+        else:
+            a = layerUtils.resizeConvBlock(a, 56, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
         a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, 1)
 
         #a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
@@ -244,7 +309,7 @@ class ModelFactory:
 
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, mask_gts_cropped])
         model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, masks])
-        optimizer = optimizers.adam(lr=3E-4)
+        optimizer = optimizers.adam(lr=1E-4)
         model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss])
         #model.compile(loss=[self.identityLoss], optimizer='adam')
@@ -289,7 +354,7 @@ class ModelFactory:
         """
 
         # note to self: alternative to sharing features -- just use a new fully-convolutional architecture 
-        a = layerUtils.Resize(112)(img_input)
+        a = layerUtils.Resize(112, tf.image.ResizeMethods.BILINEAR)(img_input)
         a = Convolution2D(int(32 * alpha_2), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
         a = BatchNormalization()(a)
         a = Activation('relu')(a)

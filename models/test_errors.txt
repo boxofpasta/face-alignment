@@ -20,4 +20,7 @@ lip_masker_030_zoomed train error for 56x56 (240 epochs): ~49500
 
 lip_masker_sep_050 train error for 56x56 (240 epochs @ 8E-4): ~92500 
 
+lip_masker_100 train error for 56x56 (340 epochs @ 8E-3): ~90800
+
+
 
