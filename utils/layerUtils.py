@@ -1,14 +1,14 @@
 from keras.engine.topology import Layer
 from depthwise_conv2d import DepthwiseConvolution2D
 from keras import backend as K
-from keras.layers import Input, Convolution2D, \
-    GlobalAveragePooling2D, Dense, BatchNormalization, Activation
+from keras.layers import Input, Convolution2D, Conv2DTranspose, Lambda, \
+    GlobalAveragePooling2D, Dense, BatchNormalization, Activation, Concatenate, Add
 import numpy as np
 import tensorflow as tf
 import generalUtils as utils
 
 class PerturbBboxes(Layer):
-    def __init__(self, scale_extents, offset_extents):
+    def __init__(self, scale_extents, offset_extents, **kwargs):
         """
         Parameters
         ----------
@@ -29,31 +29,28 @@ class PerturbBboxes(Layer):
         where yo, xo, w, h are randomly sampled according to scale and offset extents for each bbox in the batch.
         """
 
-        batch_len = bboxes.shape()[0]
-        scales = tf.random_uniform((batch_len,1), min_val=self.scale_extents[0], max_val=self.scale_extents[1])
-        scales_offset_x = tf.random_uniform((batch_len,1), min_val=self.offset_extents[0], max_val=self.offset_extents[1])
-        scales_offset_y = tf.random_uniform((batch_len,1), min_val=self.offset_extents[0], max_val=self.offset_extents[1])
+        batch_len = tf.shape(bboxes)[0]
+        scales = tf.random_uniform([batch_len], minval=self.scale_extents[0], maxval=self.scale_extents[1])
+        scales_offset_x = tf.random_uniform([batch_len], minval=self.offset_extents[0], maxval=self.offset_extents[1])
+        scales_offset_y = tf.random_uniform([batch_len], minval=self.offset_extents[0], maxval=self.offset_extents[1])
         orig_heights = bboxes[:,2] - bboxes[:,0]
         orig_widths = bboxes[:,3] - bboxes[:,1]
 
         # get the randomized parameters
-        rand_widths = scales * orig_heights
-        rand_heights = scales * orig_heights
+        add_widths = (scales - 1.0) * orig_heights 
+        add_heights = (scales - 1.0) * orig_widths 
         offset_x = scales_offset_x * orig_widths
         offset_y = scales_offset_y * orig_heights
 
         # move things into the right places
         offsets = tf.stack([
-            offset_y - rand_heights/2.0, 
-            offset_x - rand_widths/2.0, 
-            offset_y + rand_heights/2.0, 
-            offset_x + rand_widths/2.0
+            offset_y - add_heights/2.0, 
+            offset_x - add_widths/2.0, 
+            offset_y + add_heights/2.0, 
+            offset_x + add_widths/2.0
         ], axis=1)
-
-        utils.printTensorShape(offsets)
-        utils.printTensorShape(bboxes)
-        utils.printTensorShape(bboxes * offsets)
-        return bboxes * offsets
+        offsets = tf.stop_gradient(offsets)
+        return bboxes + offsets
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -200,3 +197,71 @@ def resizeConvBlock(x, out_res, features_in, features_out):
     x = Resize(out_res, tf.image.ResizeMethod.NEAREST_NEIGHBOR)(x)
     x = depthwiseConvBlock(x, features_in, features_out)
     return x
+
+def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
+    """
+    A relatively large block -- the entire mask head essentially. 
+    cfs should contain 4 feature maps, in order from highest to lowest res (or shallow to deep).
+    """
+    
+    # Mask head: 
+    # https://arxiv.org/pdf/1703.06870.pdf
+    #cf1_cropped = CropAndResize(7)([cfs[0], bboxes]) # 112x112, d = 64
+    cf2_cropped = CropAndResize(14)([cfs[1], bboxes]) # 56x56, d = 128
+    cf3_cropped = CropAndResize(7)([cfs[2], bboxes]) # 28x28, d = 256
+    cf4_cropped = CropAndResize(7)([cfs[3], bboxes]) # 14x14, d = 512
+
+    a = cf4_cropped
+    #a = Concatenate(axis=-1)([cf1_cropped, cf2_cropped, cf3_cropped, cf4_cropped]) # d = 448 + 512 = 960
+    #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
+
+    #a = Concatenate()([a, cf3_cropped])
+    a = depthwiseConvBlock(a, 512 * alpha, 512 * alpha)
+    a = depthwiseConvBlock(a, 512 * alpha, 512 * alpha)
+    a = depthwiseConvBlock(a, 512 * alpha, 256 * alpha)
+
+    # fuse cf3_cropped
+    cf3_cropped = depthwiseConvBlock(cf3_cropped, 256 * alpha, 256 * alpha)
+    a = Add()([a, cf3_cropped])
+
+    # 7x7
+    conv_transpose_depth = 128
+    
+    if not use_resize_conv:
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
+                strides=(2, 2),
+                activation='relu',
+                padding='same',
+                data_format='channels_last')(a)
+    else:
+        a = resizeConvBlock(a, 14, 512 * alpha, conv_transpose_depth * alpha)
+    for i in range(3):
+        a = depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+
+    # fuse cf2_cropped
+    cf2_cropped = depthwiseConvBlock(cf2_cropped, 128 * alpha, conv_transpose_depth * alpha)
+    a = Add()([a, cf2_cropped])
+
+    # 14x14
+    if not use_resize_conv:
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
+            strides=(2, 2),
+            activation='relu',
+            padding='same',
+            data_format='channels_last')(a)
+    else:
+        a = resizeConvBlock(a, 28, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+    for i in range(3):
+        a = depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+
+    # 28x28
+    if not use_resize_conv:
+        a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
+            strides=(2, 2),
+            activation='relu',
+            padding='same',
+            data_format='channels_last')(a)
+    else:
+        a = resizeConvBlock(a, 56, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+    a = depthwiseConvBlock(a, conv_transpose_depth * alpha, 1)
+    return a

@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
+#matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -66,6 +66,7 @@ def tryLipMasker(model, batch_generator, sample_names=None):
         mask_gt_cropped = helenUtils.getCropped(mask_gt, 224 * bbox_coords[0])
         mask_gt_cropped = cv2.resize(mask_gt_cropped, (56, 56), interpolation=cv2.INTER_AREA)
         mask_pred = masks[0][:,:,0]
+        mask_pred = 1.0 / (1.0 + np.exp(-mask_pred+0.5))
         b = bbox_coords[0]
         c[:,:,0] = mask_pred
         c[:,:,1] = mask_gt_cropped
@@ -204,20 +205,21 @@ if __name__ == '__main__':
     #sess = K.get_session()
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
     #K.set_session(sess)
-    train = False
+    train = True
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
     factory = ModelFactory.ModelFactory()
     #model = factory.getSaved('models/tmp/test.h5')
-    model = factory.getSaved('models/lip_masker_100.h5')
+    #model = factory.getSaved('models/lip_masker_100.h5')
     #model = factory.getLipMasker(alpha_1=1, alpha_2=1)
     #model = factory.getSaved('models/lip_fc_100.h5')
     #model = factory.getFullyConnected(alpha=1.0)
     #model.summary()
     #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
 
-    #model = factory.getLipMaskerZoomed()
+    #model = factory.getSaved('models/lip_masker_rand_bbox_100.h5')
+    model = factory.getLipMasker()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
     #model = factory.getBboxRegressor()
@@ -240,10 +242,10 @@ if __name__ == '__main__':
     if train:
         model.fit_generator(generator=train_batch_generator.generate(),
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
-                            epochs=240)
+                            epochs=100)
 
         #model.save('models/tmp/lip_fc.h5')
-        model.save('models/tmp/lip_fc_100.h5')
+        model.save('models/tmp/lip_masker_rand_bbox_fpn_100.h5')
         #model.save('models/tmp/lip_masker_100.h5')
         #model.save('models/tmp/lip_masker_skip_100.h5')
         if notify_training_complete:

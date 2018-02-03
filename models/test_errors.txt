@@ -22,5 +22,8 @@ lip_masker_sep_050 train error for 56x56 (240 epochs @ 8E-4): ~92500
 
 lip_masker_100 train error for 56x56 (340 epochs @ 8E-3): ~90800
 
+when using randomized bboxes in training:
+lip_masker_rand_bboxes_100 for 56x56 (480 epochs @ 1E-4): ~91000
+
 
 

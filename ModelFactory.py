@@ -50,7 +50,8 @@ class ModelFactory:
             'DepthwiseConvolution2d': DepthwiseConvolution2D,
             'DepthwiseConv2D': DepthwiseConvolution2D, #mobilenet.DepthwiseConv2D, # there seems to be a name conflict lol
             'CropAndResize' : layerUtils.CropAndResize,
-            'Resize': layerUtils.Resize
+            'Resize': layerUtils.Resize,
+            'PerturbBboxes' : layerUtils.PerturbBboxes
         }
 
     def getSaved(self, path, frozen=False):
@@ -209,6 +210,8 @@ class ModelFactory:
             for _ in range(5):
                 x = layerUtils.depthwiseConvBlock(x, 512 * alpha_1, 512 * alpha_1)
 
+        cf4 = x
+
         # End of backbone:
         # Output dims are 14 x 14 x (512 * alpha_1)
 
@@ -218,75 +221,14 @@ class ModelFactory:
         b = GlobalAveragePooling2D()(b)
         b = Dense(4)(b)
 
-        # Mask head: 
-        # https://arxiv.org/pdf/1703.06870.pdf
-        cf1_cropped = layerUtils.CropAndResize(28)([cf1, b]) # d = 64
-        cf2_cropped = layerUtils.CropAndResize(14)([cf2, b]) # d = 128
-        cf3_cropped = layerUtils.CropAndResize(7)([cf3, b]) # d = 256
-        a = layerUtils.CropAndResize(7)([x, b])
+        # use for the mask branch, to help mask predictions be more robust even for poor bounding boxes
+        randomized_bboxes = layerUtils.PerturbBboxes([0.7, 1.4], [-0.2, 0.2])(b)
 
-        a = Concatenate(axis=-1)([a, cf1_cropped, cf2_cropped, cf3_cropped]) # d = 448 + 512 = 960
-        #a = Convolution2D(int(512 * alpha), (3, 3), strides=(2, 2), padding='same', use_bias=False)(x)
+        cfs = [cf1, cf2, cf3, cf4]
 
-        #a = Concatenate()([a, cf3_cropped])
-        a = layerUtils.depthwiseConvBlock(a, 512 * alpha_1, 512 * alpha_1)
-        for i in range(2):
-            a = layerUtils.depthwiseConvBlock(a, 512 * alpha_1, 512 * alpha_1)
-
-        # note to self: alternative to sharing features -- just use a new fully-convolutional architecture 
-        """
-        a = layerUtils.CropAndResize(112)([img_input, b])
-        a = Convolution2D(int(32 * alpha_2), (3, 3), strides=(2, 2), padding='same', use_bias=False)(a)
-        a = BatchNormalization()(a)
-        a = Activation('relu')(a)
-        a = layerUtils.depthwiseConvBlock(a, 32 * alpha_2, 64 * alpha_2)
-        a = layerUtils.depthwiseConvBlock(a, 64 * alpha_2, 128 * alpha_2, down_sample=True)
-        a = layerUtils.depthwiseConvBlock(a, 128 * alpha_2, 128 * alpha_2)
-        a = layerUtils.depthwiseConvBlock(a, 128 * alpha_2, 256 * alpha_2, down_sample=True)
-        a = layerUtils.depthwiseConvBlock(a, 256 * alpha_2, 256 * alpha_2)
-        a = layerUtils.depthwiseConvBlock(a, 256 * alpha_2, 512 * alpha_2, down_sample=True)
-        if not shallow:
-            for _ in range(5):
-                a = layerUtils.depthwiseConvBlock(a, 512 * alpha_2, 512 * alpha_2)
-        """
-
-        # 7x7
-        use_resize_conv = False
-        conv_transpose_depth = 128
-        
-        if not use_resize_conv:
-            a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
-                    strides=(2, 2),
-                    activation='relu',
-                    padding='same',
-                    data_format='channels_last')(a)
-        else:
-            a = layerUtils.resizeConvBlock(a, 14, 512 * alpha_2, conv_transpose_depth * alpha_2)
-        for i in range(3):
-            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
-
-        # 14x14
-        if not use_resize_conv:
-            a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
-                strides=(2, 2),
-                activation='relu',
-                padding='same',
-                data_format='channels_last')(a)
-        else:
-            a = layerUtils.resizeConvBlock(a, 28, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
-        for i in range(3):
-            a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
-
-        # 28x28
-        if not use_resize_conv:
-            a = Conv2DTranspose(int(conv_transpose_depth * alpha_2), kernel_size=(3, 3),
-                strides=(2, 2),
-                activation='relu',
-                padding='same',
-                data_format='channels_last')(a)
-        else:
-            a = layerUtils.resizeConvBlock(a, 56, conv_transpose_depth * alpha_2, conv_transpose_depth * alpha_2)
-        a = layerUtils.depthwiseConvBlock(a, conv_transpose_depth * alpha_2, 1)
+        # don't want the randomized boxes for test-time inference
+        randomized_masks = layerUtils.getMaskHead(randomized_bboxes, cfs, alpha_1)
+        #masks = layerUtils.getMaskHead(b, cfs, alpha_1)
 
         #a = Lambda(lambda a: K.squeeze(a, axis=-1))(a)
         if input_tensor is not None:
@@ -294,22 +236,23 @@ class ModelFactory:
         else:
             inputs = img_input
 
-        # a is the unnormalized bboxes
-        masks = Activation('sigmoid', name='masks')(a)
+        #masks = Activation('sigmoid', name='masks')(masks)
         bboxes = Lambda(lambda b: b, name='bboxes')(b)
         
         #mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
 
         # try to generate ground truth masks (which were obtained from ground truth crops)
-        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, a, bboxes])
+        mask_loss = layerUtils.MaskSigmoidLossLayer(self.mask_side_len, name='mask_obj')([mask_gts, randomized_masks, randomized_bboxes])
         #mask_gts_cropped = layerUtils.CropAndResize(self.mask_side_len)([mask_gts, bbox_gts])
         #mask_gts_cropped = Lambda(lambda a: K.squeeze(a, axis=-1))(mask_gts_cropped)
         bbox_loss = layerUtils.SquaredDistanceLossLayer(name='bbox_obj')([bbox_gts, bboxes])
         #total_loss = Lambda(lambda(l1, l2) : l1 + l2)([mask_loss, bbox_loss])
 
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, mask_gts_cropped])
-        model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, bboxes, masks])
+        model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss, randomized_bboxes, randomized_masks])
+        #model =  Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss, bbox_loss])
         optimizer = optimizers.adam(lr=1E-4)
+        #model.compile(loss=[self.identityLoss, self.identityLoss], optimizer=optimizer)
         model.compile(loss=[self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
         #model = Model(inputs=[inputs, bbox_gts, mask_gts], outputs=[mask_loss])
         #model.compile(loss=[self.identityLoss], optimizer='adam')
