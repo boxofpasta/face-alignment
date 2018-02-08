@@ -31,7 +31,7 @@ def getGaussians(num_means, num_elements, stddev=0.01):
     ----------
     num_means: 
         Number of gaussian pdfs to store.
-    num_elements:
+    num_elements: 
         Number of samples for each of the gaussian pdfs.
     
     Note that [start, end] for each gaussian for both means and elements = [0, 1]
@@ -63,7 +63,7 @@ def coordsToHeatmapsFast(coords, pdfs):
 
     Returns
     -------
-    Numpy array of shape (num_coords, l, l). Each point is represented by a heatmap with a single gaussian.
+    Numpy array of shape (num_coords, l, l), where l = len(pdf[i]). Each point is represented by a heatmap with a single gaussian.
     """
     heatmaps = []
     for point in coords:

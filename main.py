@@ -3,7 +3,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
-#matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     #sess = K.get_session()
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
     #K.set_session(sess)
-    train = True
+    train = False
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
@@ -219,7 +219,9 @@ if __name__ == '__main__':
     #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
 
     #model = factory.getSaved('models/lip_masker_rand_bbox_100.h5')
-    model = factory.getLipMasker()
+    model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
+    #model = factory.getLipMasker()
+    #model.summary()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
     #model = factory.getBboxRegressor()

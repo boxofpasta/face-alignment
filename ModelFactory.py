@@ -139,10 +139,50 @@ class ModelFactory:
         return model
 
     def getPointMasker(self):
-
-        """ Mobilenet with some 'deconv' layers near the end """
         in_shape = (self.im_width, self.im_height, 3)
-        base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape)
+        img_input = Input(shape=input_shape)
+
+        x = Convolution2D(32, (3, 3), strides=(1, 1), padding='same', use_bias=False)(img_input)
+
+        num_features = [64, 128, 256, 512, 512]
+        z_layers = [None] * 5
+        x, z_layers[0] = layerUtils.rcfBlock(x, num_features[0], 2, z_out_layers=4) 
+        x, z_layers[1] = layerUtils.rcfBlock(x, num_features[1], 2, z_out_layers=4) 
+        x, z_layers[2] = layerUtils.rcfBlock(x, num_features[2], 3, z_out_layers=1)
+        x, z_layers[3] = layerUtils.rcfBlock(x, num_features[3], 3, z_out_layers=1)
+        x, z_layers[4] = layerUtils.rcfBlock(x, num_features[4], 3, z_out_layers=1)
+        
+        # want 112x112 feature maps
+        z_layers[0] = layerUtils.depthwiseConvBlock(z_layers[0], 4, 8, down_sample=True)
+
+        # upsample 
+        z_layers[2] = Conv2DTranspose(
+            self.num_coords, kernel_size=(3, 3),
+            strides=(2, 2),
+            activation='linear',
+            padding='same')(z_layers[2])
+
+        # long strides xD
+        z_layers[3] = Conv2DTranspose(
+            self.num_coords, kernel_size=(3, 3),
+            strides=(4, 4),
+            activation='linear',
+            padding='same')(z_layers[3])
+
+        z_layers[4] = Conv2DTranspose(
+            self.num_coords, kernel_size=(3, 3),
+            strides=(4, 4),
+            activation='linear',
+            padding='same')(z_layers[3])
+
+        final = Concatenate()(z_layers)
+        final = layerUtils.depthwiseConvBlock(final, np.sum(num_features), 1)
+
+        # losses
+        
+        
+
+        """base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape)
         x = base_model.output
 
         # 7x7 head resolution, need 2^3 to get 56x56 resolution
@@ -159,7 +199,7 @@ class ModelFactory:
                 activation='linear',
                 padding='same')(x)
         model = Model(inputs=base_model.input, outputs=x)
-        model.compile(loss=self.pointMaskSoftmaxLoss, optimizer='adam')
+        model.compile(loss=self.pointMaskSoftmaxLoss, optimizer='adam')"""
         return model
 
     def getLipMasker(self, alpha_1=1, alpha_2=1):

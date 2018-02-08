@@ -44,12 +44,22 @@ class BatchGenerator:
         self.steps_per_epoch = len(self.all_names) / self.batch_size
 
     def getPair(self, sample_name):
+        """
+        Parameters
+        ----------
+        sample_name: 
+            No extension or folder name included, just the name.
+
+        Returns
+        -------
+        (inputs, outputs) pair, just as the model would receive during training.
+        """
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
         coords = np.load(self.coords_path + '/' + sample_name + '.npy')
         coords = self.preprocessCoords(coords)
-        label = self.getOutputs(coords, im)  
+        outputs = self.getOutputs(coords, im)  
         inputs = self.getInputs(coords, im)
-        return inputs, label    
+        return inputs, outputs    
 
     def getAllPairs(self):
         print 'Not implemented yet'
@@ -185,10 +195,6 @@ class MaskBatchGenerator(BatchGenerator):
         self.mask_side_len = mask_side_len
 
     def getLabels(self, coords, im):
-        """coords = np.reshape(coords, (self.num_coords, 2))
-        heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
-        heatmap = np.moveaxis(heatmap, 0, -1)
-        return heatmap"""
 
         # need lip_coords in pixel-coordinate units for generating masks
         lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords))).astype(int)
@@ -203,4 +209,27 @@ class MaskBatchGenerator(BatchGenerator):
 
     def getOutputs(self, coords, im):
         """ These are mock outputs to satisfy some of Keras' checks """
+        return [0]
+
+
+class PointMaskBatchGenerator(BatchGenerator):
+
+    def __init__(self, path, mask_side_len):
+        BatchGenerator.__init__(self, path)
+        self.mask_side_len = mask_side_len
+        self.pdfs = utils.getGaussians(10000, self.mask_side_len)
+    
+    def getLabels(self, coords, im):
+        coords = np.reshape(coords, (self.num_coords, 2))
+        heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
+        heatmap = np.moveaxis(heatmap, 0, -1)
+        return heatmap
+
+    def getInputs(self, coords, im):
+        inputs = im
+        labels = self.getLabels(coords, im)
+        return [inputs, labels]
+
+    def getOutputs(self, coords, im):
+        """ Dummy outputs """
         return [0]

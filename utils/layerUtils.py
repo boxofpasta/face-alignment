@@ -110,6 +110,44 @@ class Resize(Layer):
         base_config = super(Resize, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+class PointMaskSigmoidLossLayer(Layer):
+    def __init__(self, mask_side_len, **kwargs):
+        self.mask_side_len = mask_side_len
+        super(PointMaskSigmoidLossLayer, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        labels, preds = inputs
+
+        # should just be single channel images
+        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=cropped_labels)
+        return tf.expand_dims(tf.reduce_sum(cross_entropy,axis=[1,2]), axis=1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0][0],1)
+
+    def get_config(self):
+        config = {'mask_side_len': self.mask_side_len}
+        base_config = super(PointMaskSigmoidLossLayer, self).get_config()
+        return dict(list(base_config.items()) + list(config.items())) 
+
+class PointMaskSoftmaxLossLayer(Layer):
+    def __init__(self, mask_side_len, **kwargs):
+        self.mask_side_len = mask_side_len
+        super(PointMaskSigmoidLossLayer, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        labels, preds = inputs
+        entropy = tf.nn.softmax_cross_entropy_with_logits(logits=preds, labels=labels)
+        return tf.expand_dims(tf.reduce_sum(entropy), axis=1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0][0],1)
+
+    def get_config(self):
+        config = {'mask_side_len': self.mask_side_len}
+        base_config = super(PointMaskSoftmaxLossLayer, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))   
+
 class MaskSigmoidLossLayer(Layer):
 
     def __init__(self, mask_side_len, **kwargs):
@@ -164,7 +202,8 @@ class MaskSigmoidLossLayerNoCrop(Layer):
     def get_config(self):
         config = {'mask_side_len': self.mask_side_len}
         base_config = super(MaskSigmoidLossLayerNoCrop, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
+        return dict(list(base_config.items()) + list(config.items()))  
+
 
 class SquaredDistanceLossLayer(Layer):
 
@@ -183,9 +222,9 @@ class SquaredDistanceLossLayer(Layer):
         return (input_shape[0][0],1)
 
 
-def depthwiseConvBlock(x, features_in, features_out, down_sample=False):
+def depthwiseConvBlock(x, features_in, features_out, down_sample=False, kernel_size=(3,3)):
     strides = (2, 2) if down_sample else (1, 1)
-    x = DepthwiseConvolution2D(int(features_in), (3, 3), strides=strides, padding='same', use_bias=False)(x)
+    x = DepthwiseConvolution2D(int(features_in), kernel_size, strides=strides, padding='same', use_bias=False)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Convolution2D(int(features_out), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
@@ -198,6 +237,29 @@ def resizeConvBlock(x, out_res, features_in, features_out):
     x = depthwiseConvBlock(x, features_in, features_out)
     return x
 
+def rcfBlock(x, features_out, num_layers, z_out_layers=1):
+    """
+    https://arxiv.org/pdf/1612.02103.pdf
+    Parameters
+    ----------
+    layers: 
+        The number of layers to use in this block. Should be 2 or 3.
+    """
+    features_in = tf.shape(x)[3]
+
+    outputs = []
+    for i in range(num_layers-1):
+        x = depthwiseConvBlock(x, features_in, features_in)
+        outputs.append(x)
+    
+    x = depthwiseConvBlock(x, features_in, features_out, down_sample=True)
+    outputs.append(x)
+
+    z = Add()(outputs)
+    z = depthwiseConvBlock(z, features_in * num_layers, z_out_layers)
+    return [x, z]
+
+
 def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
     """
     A relatively large block -- the entire mask head essentially. 
@@ -206,9 +268,9 @@ def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
     
     # Mask head: 
     # https://arxiv.org/pdf/1703.06870.pdf
-    #cf1_cropped = CropAndResize(7)([cfs[0], bboxes]) # 112x112, d = 64
-    cf2_cropped = CropAndResize(14)([cfs[1], bboxes]) # 56x56, d = 128
-    cf3_cropped = CropAndResize(7)([cfs[2], bboxes]) # 28x28, d = 256
+    #cf1_cropped = CropAndResize(56)([cfs[0], bboxes]) # 112x112, d = 64
+    cf2_cropped = CropAndResize(28)([cfs[1], bboxes]) # 56x56, d = 128
+    cf3_cropped = CropAndResize(14)([cfs[2], bboxes]) # 28x28, d = 256
     cf4_cropped = CropAndResize(7)([cfs[3], bboxes]) # 14x14, d = 512
 
     a = cf4_cropped
@@ -219,10 +281,6 @@ def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
     a = depthwiseConvBlock(a, 512 * alpha, 512 * alpha)
     a = depthwiseConvBlock(a, 512 * alpha, 512 * alpha)
     a = depthwiseConvBlock(a, 512 * alpha, 256 * alpha)
-
-    # fuse cf3_cropped
-    cf3_cropped = depthwiseConvBlock(cf3_cropped, 256 * alpha, 256 * alpha)
-    a = Add()([a, cf3_cropped])
 
     # 7x7
     conv_transpose_depth = 128
@@ -235,14 +293,14 @@ def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
                 data_format='channels_last')(a)
     else:
         a = resizeConvBlock(a, 14, 512 * alpha, conv_transpose_depth * alpha)
+
+    # 14x14
+    # fuse cf3_cropped
+    cf3_cropped = depthwiseConvBlock(cf3_cropped, 256 * alpha, conv_transpose_depth * alpha, kernel_size=(1,1))
+    a = Add()([a, cf3_cropped])
     for i in range(3):
         a = depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
 
-    # fuse cf2_cropped
-    cf2_cropped = depthwiseConvBlock(cf2_cropped, 128 * alpha, conv_transpose_depth * alpha)
-    a = Add()([a, cf2_cropped])
-
-    # 14x14
     if not use_resize_conv:
         a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
             strides=(2, 2),
@@ -251,10 +309,15 @@ def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
             data_format='channels_last')(a)
     else:
         a = resizeConvBlock(a, 28, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+    
+    # 28x28
+    # fuse cf2_cropped
+    cf2_cropped = depthwiseConvBlock(cf2_cropped, 128 * alpha, conv_transpose_depth * alpha, kernel_size=(1,1))
+    a = Add()([a, cf2_cropped])
+
     for i in range(3):
         a = depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
 
-    # 28x28
     if not use_resize_conv:
         a = Conv2DTranspose(int(conv_transpose_depth * alpha), kernel_size=(3, 3),
             strides=(2, 2),
@@ -263,5 +326,9 @@ def getMaskHead(bboxes, cfs, alpha, use_resize_conv=False):
             data_format='channels_last')(a)
     else:
         a = resizeConvBlock(a, 56, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
+    
+    # 56x56
+    # fuse cf1_cropped (?)
+    a = depthwiseConvBlock(a, conv_transpose_depth * alpha, conv_transpose_depth * alpha)
     a = depthwiseConvBlock(a, conv_transpose_depth * alpha, 1)
     return a
