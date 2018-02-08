@@ -67,8 +67,8 @@ def coordsToHeatmapsFast(coords, pdfs):
     """
     heatmaps = []
     for point in coords:
-        i_x = int(np.rint(np.clip(point[0], 0, 1) * (len(pdfs) - 1)) ) 
-        i_y = int(np.rint(np.clip(point[1], 0, 1) * (len(pdfs) - 1)))
+        i_x = int(np.rint(np.clip(point[1], 0, 1) * (len(pdfs) - 1)) ) 
+        i_y = int(np.rint(np.clip(point[0], 0, 1) * (len(pdfs) - 1)))
         pdf_x = [pdfs[i_x]] 
         pdf_y = [pdfs[i_y]] 
         heatmap = np.transpose(pdf_y) * pdf_x

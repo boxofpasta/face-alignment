@@ -99,7 +99,7 @@ class Resize(Layer):
         batch_dim = tf.shape(x)[0]
         #x = tf.image.resize_area(x, self.output_dim)
         #x = tf.image.resize_images(x, self.output_dim, method=self.method)
-        x = tf.image.resize_images(x, self.output_dim)
+        x = tf.image.resize_images(x, self.output_dim, method=self.method)
         return x
 
     def compute_output_shape(self, input_shape):
@@ -114,17 +114,20 @@ class Resize(Layer):
 class PointMaskSoftmaxLossLayer(Layer):
     def __init__(self, mask_side_len, **kwargs):
         self.mask_side_len = mask_side_len
-        super(PointMaskSigmoidLossLayer, self).__init__(**kwargs)
+        super(PointMaskSoftmaxLossLayer, self).__init__(**kwargs)
 
     def call(self, inputs):
         labels, preds = inputs
-        batch_dim = tf.shape(labels)[0]
 
         # flatten image dimensions to get distribution for softmax
-        labels = tf.reshape(labels, [batch_dim, -1])
-        preds = tf.reshape(preds, [batch_dim, -1])
+        labels = tf.transpose(labels, [0, 3, 1, 2])
+        preds = tf.transpose(preds, [0, 3, 1, 2])
+        batch_dim = tf.shape(labels)[0]
+        coords_dim = tf.shape(labels)[1]
+        labels = tf.reshape(labels, [batch_dim * coords_dim, -1])
+        preds = tf.reshape(preds, [batch_dim * coords_dim, -1])
         entropy = tf.nn.softmax_cross_entropy_with_logits(logits=preds, labels=labels)
-        return tf.expand_dims(tf.reduce_sum(entropy), axis=1)
+        return tf.expand_dims(entropy, axis=1)
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0][0],1)
@@ -223,7 +226,7 @@ def resizeConvBlock(x, out_res, features_in, features_out):
     x = depthwiseConvBlock(x, features_in, features_out)
     return x
 
-def rcfBlock(x, features_out, num_layers, z_out_layers=1):
+def rcfBlock(x, features_in, features_out, num_layers, z_out_layers=1):
     """
     https://arxiv.org/pdf/1612.02103.pdf
     Parameters
@@ -231,7 +234,6 @@ def rcfBlock(x, features_out, num_layers, z_out_layers=1):
     layers: 
         The number of layers to use in this block. Should be 2 or 3.
     """
-    features_in = tf.shape(x)[3]
 
     outputs = []
     for i in range(num_layers-1):
@@ -239,10 +241,11 @@ def rcfBlock(x, features_out, num_layers, z_out_layers=1):
         outputs.append(x)
     
     x = depthwiseConvBlock(x, features_in, features_out, down_sample=True)
-    outputs.append(x)
-
-    z = Add()(outputs)
-    z = depthwiseConvBlock(z, features_in * num_layers, z_out_layers)
+    if len(outputs) > 1:
+        z = Add()(outputs)
+    else:
+        z = outputs[0]
+    z = depthwiseConvBlock(z, features_in, z_out_layers)
     return [x, z]
 
 

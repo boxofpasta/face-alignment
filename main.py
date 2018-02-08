@@ -219,8 +219,10 @@ if __name__ == '__main__':
     #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
 
     #model = factory.getSaved('models/lip_masker_rand_bbox_100.h5')
-    model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
+    #model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
     #model = factory.getLipMasker()
+    #model = factory.getPointMasker()
+    #model = factory.getSaved('models/tmp/point_masker.h5')
     #model.summary()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
@@ -231,7 +233,22 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_sep_100.h5')
     #model = factory.getSaved('models/lip_masker_050.h5')
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
-    train_batch_generator = BatchGenerator.MaskAndBboxBatchGenerator('data/train_ibug', factory.mask_side_len)
+    train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len)
+    
+    inputs, _ = train_batch_generator.getPair(samples[0])
+    im = inputs[0]
+    coords_masks = inputs[1]
+    summed_coords_masks = np.squeeze(inputs[2])
+    plt.imshow(im)
+    plt.show()
+    for i in range(0, 2):
+        plt.imshow(coords_masks[:,:,i])
+        plt.show()
+
+    plt.imshow(summed_coords_masks)
+    plt.show()
+
+    #train_batch_generator = BatchGenerator.MaskAndBboxBatchGenerator('data/train_ibug', factory.mask_side_len)
     #train_batch_generator = BatchGenerator.PointsBatchGenerator('data/train_ibug')
     #test_batch_generator = BatchGenerator.MaskBatchGenerator('data/test', factory.coords_sparsity, read_all=True)
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
@@ -244,10 +261,10 @@ if __name__ == '__main__':
     if train:
         model.fit_generator(generator=train_batch_generator.generate(),
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
-                            epochs=100)
+                            epochs=70)
 
         #model.save('models/tmp/lip_fc.h5')
-        model.save('models/tmp/lip_masker_rand_bbox_fpn_100.h5')
+        model.save('models/tmp/point_masker.h5')
         #model.save('models/tmp/lip_masker_100.h5')
         #model.save('models/tmp/lip_masker_skip_100.h5')
         if notify_training_complete:

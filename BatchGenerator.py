@@ -217,14 +217,19 @@ class PointMaskBatchGenerator(BatchGenerator):
     def __init__(self, path, mask_side_len):
         BatchGenerator.__init__(self, path)
         self.mask_side_len = mask_side_len
-        self.pdfs = utils.getGaussians(10000, self.mask_side_len)
+        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.011)
     
     def getLabels(self, coords, im):
         """ Returns heatmaps (1 channel for each coord), along with the summed version. """
         coords = np.reshape(coords, (self.num_coords, 2))
         heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
-        return heatmap, np.expand_dims(np.sum(heatmap, axis=-1), axis=-1)
+        heatmap /= np.sum(heatmap, axis=(0,1))
+        summed = np.sum(heatmap, axis=-1)
+        summed /= (np.max(summed) / 4.0)
+        summed = np.minimum(summed, 1.0)
+        summed = np.expand_dims(summed, axis=-1)
+        return [heatmap, summed]
 
     def getInputs(self, coords, im):
         inputs = im
@@ -232,5 +237,5 @@ class PointMaskBatchGenerator(BatchGenerator):
         return [inputs] + labels
 
     def getOutputs(self, coords, im):
-        """ Dummy outputs """
-        return [0]
+        """ Dummy outputs. Basically for however many non-None loss entries we have in the model."""
+        return [0, 0, 0]
