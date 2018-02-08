@@ -8,7 +8,7 @@ import sys
 import BatchGenerator
 from keras import optimizers
 from keras.layers import Dense, Reshape, BatchNormalization, Flatten
-from keras.layers import Dropout, Conv2DTranspose, Lambda, Concatenate
+from keras.layers import Dropout, Conv2DTranspose, Lambda, Concatenate, Add
 from keras.models import Model, Sequential
 from keras.models import load_model
 from keras.applications import mobilenet
@@ -140,7 +140,11 @@ class ModelFactory:
 
     def getPointMasker(self):
         in_shape = (self.im_width, self.im_height, 3)
+        masks_shape = (self.mask_side_len, self.mask_side_len, self.num_coords)
+        summed_masks_shape = (self.mask_side_len, self.mask_side_len, 1)
         img_input = Input(shape=input_shape)
+        label_masks = Input(shape=masks_shape)
+        label_summed_masks = Input(shape=summed_masks_shape)
 
         x = Convolution2D(32, (3, 3), strides=(1, 1), padding='same', use_bias=False)(img_input)
 
@@ -179,27 +183,20 @@ class ModelFactory:
         final = layerUtils.depthwiseConvBlock(final, np.sum(num_features), 1)
 
         # losses
-        
-        
+        losses = 3 * [None]
 
-        """base_model = mobilenet.MobileNet(include_top=False, input_shape=in_shape)
-        x = base_model.output
+        # sigmoid losses
+        losses[0] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[3]])
+        losses[1] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[4]])
+        losses[2] = layerUtils.PointMaskSoftmaxLossLayer(self.mask_side_len)([label_masks, final])
+        loss = Add(losses)
 
-        # 7x7 head resolution, need 2^3 to get 56x56 resolution
-        x = Conv2DTranspose(256, kernel_size=(3, 3),
-                strides=(2, 2),
-                activation='relu',
-                padding='same')(x)
-        x = Conv2DTranspose(256, kernel_size=(3, 3),
-                strides=(2, 2),
-                activation='relu',
-                padding='same')(x)
-        x = Conv2DTranspose(self.num_coords, kernel_size=(3, 3),
-                strides=(2, 2),
-                activation='linear',
-                padding='same')(x)
-        model = Model(inputs=base_model.input, outputs=x)
-        model.compile(loss=self.pointMaskSoftmaxLoss, optimizer='adam')"""
+        model = Model(
+            inputs=[img_input, label_masks, label_summed_masks], 
+            outputs=[loss, final, z_layers[4]]
+        )
+        optimizer = optimizers.adam(lr=1E-3)
+        model.compile(loss=[self.identityLoss, None, None], optimizer=optimizer)
         return model
 
     def getLipMasker(self, alpha_1=1, alpha_2=1):

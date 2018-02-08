@@ -109,26 +109,7 @@ class Resize(Layer):
         config = {'out_im_res': self.out_im_res, 'method': self.method}
         base_config = super(Resize, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
-class PointMaskSigmoidLossLayer(Layer):
-    def __init__(self, mask_side_len, **kwargs):
-        self.mask_side_len = mask_side_len
-        super(PointMaskSigmoidLossLayer, self).__init__(**kwargs)
-
-    def call(self, inputs):
-        labels, preds = inputs
-
-        # should just be single channel images
-        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=cropped_labels)
-        return tf.expand_dims(tf.reduce_sum(cross_entropy,axis=[1,2]), axis=1)
-
-    def compute_output_shape(self, input_shape):
-        return (input_shape[0][0],1)
-
-    def get_config(self):
-        config = {'mask_side_len': self.mask_side_len}
-        base_config = super(PointMaskSigmoidLossLayer, self).get_config()
-        return dict(list(base_config.items()) + list(config.items())) 
+    
 
 class PointMaskSoftmaxLossLayer(Layer):
     def __init__(self, mask_side_len, **kwargs):
@@ -137,6 +118,11 @@ class PointMaskSoftmaxLossLayer(Layer):
 
     def call(self, inputs):
         labels, preds = inputs
+        batch_dim = tf.shape(labels)[0]
+
+        # flatten image dimensions to get distribution for softmax
+        labels = tf.reshape(labels, [batch_dim, -1])
+        preds = tf.reshape(preds, [batch_dim, -1])
         entropy = tf.nn.softmax_cross_entropy_with_logits(logits=preds, labels=labels)
         return tf.expand_dims(tf.reduce_sum(entropy), axis=1)
 

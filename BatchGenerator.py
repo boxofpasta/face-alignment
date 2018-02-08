@@ -220,15 +220,16 @@ class PointMaskBatchGenerator(BatchGenerator):
         self.pdfs = utils.getGaussians(10000, self.mask_side_len)
     
     def getLabels(self, coords, im):
+        """ Returns heatmaps (1 channel for each coord), along with the summed version. """
         coords = np.reshape(coords, (self.num_coords, 2))
         heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
-        return heatmap
+        return heatmap, np.expand_dims(np.sum(heatmap, axis=-1), axis=-1)
 
     def getInputs(self, coords, im):
         inputs = im
         labels = self.getLabels(coords, im)
-        return [inputs, labels]
+        return [inputs] + labels
 
     def getOutputs(self, coords, im):
         """ Dummy outputs """
