@@ -10,6 +10,8 @@ import cv2
 from PIL import Image
 from matplotlib.patches import Circle
 from matplotlib.patches import Polygon
+from scipy.interpolate import spline
+from skimage.draw import line_aa
 
 
 class DatasetProps:
@@ -324,7 +326,6 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                     labels[key] = cur_labels
     return labels
 
-
 def getLipCoords(coords):
     """
     Only works for the ibug annotated version currently.
@@ -334,6 +335,62 @@ def getLipCoords(coords):
         Should have shape (num_coords, 2).
     """
     return coords[48:60]
+
+def getLipLineMask(lip_coords, in_shape, out_shape):
+    """
+    Only works for the ibug annotated version currently.
+    Parameters
+    ----------
+    in_shape: 
+        shape of image to which lip_coords correspond to.
+    out_shape: 
+        shape of output image (we will resize).
+    coords: 
+        Should have shape (num_coords, 2).
+    """
+
+    # https://stackoverflow.com/questions/5283649/plot-smooth-line-with-pyplot
+    lip_coords = np.array(lip_coords)
+    x = lip_coords[:,1]
+    y = lip_coords[:,0]
+    pts = 40
+
+    # p0 -> p6
+    x_new = np.linspace(x[0], x[6], pts / 2)
+    y_new_top = spline(x[0:7], y[0:7], x_new)
+
+    # p6 -> p11 -> p0
+    x_new = np.linspace(x[6], x[0], pts / 2)
+    x_bot = np.concatenate([x[6:], x[0])
+    y_bot = np.concatenate([y[6:], y[0]])
+    y_new_bot = spline(x_bot, y_bot, x_new)
+
+    # draw into an image with many times as many pixels, as line_aa only works with integer coords
+    mult = 4
+    draw_shape = (in_shape[0] * mult, in_shape[1] * mult)
+    x_new = np.rint(mult * x_new)
+    y_new_top = np.rint(mult * y_new_top)
+    y_new_bot = np.rint(mult * y_new_bot)
+    img = np.zeros(draw_shape, dtype=np.uint8)
+
+    # draw the anti-aliased lines
+    for i in range(len(x_new)-1):
+
+        # top
+        rr, cc, val = line_aa(y_new_top[i], x_new[i], y_new_top[i+1], x_new[i+1])
+        img[rr, cc] = val * 255
+
+        # bot
+        rr, cc, val = line_aa(y_new_bot[i], x_new[i], y_new_bot[i+1], x_new[i+1])
+        img[rr, cc] = val * 255
+
+    #rr, cc, val = line_aa(1, 1, 8, 4)
+    #img[rr, cc] = val * 255
+    #scipy.misc.imsave("out.png", img)
+
+    plt.imshow(img)
+    plt.show()
+
 
 def trySerializedSample(npy_path, name, targ_im_len):
     im = np.load(npy_path + '/ims/' + name + '.npy')
