@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
 import json 
+import time
 
 """
 This file contains BatchGenerator (which returns unaltered helen labels as float array),
@@ -21,7 +22,7 @@ class BatchGenerator:
         The names of all samples (training pairs) must be in path/names.json.
     """
     def __init__(self, path, coords_sparsity=1):
-        self.batch_size = 50
+        self.batch_size = 32
         self.all_names = []
 
         # essentially taking every self.sparsity points in the original coords
@@ -78,10 +79,33 @@ class BatchGenerator:
     def getOutputs(self, coords, im):
         return [coords]
 
+    """ 
     def visualizeBatch(self):
         for im_batch, labels_batch in self.generate():
             for i in range(len(im_batch)):
                 utils.visualizeCoords(im_batch[i], len(im_batch[i]) * labels_batch[i])
+    """
+    
+    def getBatchFromNames(self, sample_names):
+        X, Y = [], []
+        for name in sample_names:
+            x, y = self.getPair(name)
+            X.push(x)
+            Y.push(y)
+        return self.getBatchFromSamples(X, Y)
+    
+    def getBatchFromSamples(self, X, Y):
+        if isinstance(Y[0], tuple):
+            raise ValueError('Please use a list for multiple outputs')
+        if isinstance(Y[0], list):
+            Y = utils.transposeList(Y)
+            Y = [np.array(output_batch_type) for output_batch_type in Y]
+        else:
+            Y = np.array(Y)
+
+        X = utils.transposeList(X)
+        X = [np.array(in_array) for in_array in X]
+        return X, Y
 
     def generate(self):
         while(True):
@@ -92,6 +116,7 @@ class BatchGenerator:
             np.random.shuffle(rand_idx)
 
             for i in range(0, num_batches):
+                past = time.clock()
 
                 # get range of current batch
                 start = (i * self.batch_size) % len(self.all_names)
@@ -118,18 +143,7 @@ class BatchGenerator:
                     #X.append([im])
                     #X.append([im] + label)
                 
-                # in the case of multiple outputs
-                if isinstance(Y[0], tuple):
-                    raise ValueError('Please use a list for multiple outputs')
-                if isinstance(Y[0], list):
-                    Y = utils.transposeList(Y)
-                    Y = [np.array(output_batch_type) for output_batch_type in Y]
-                else:
-                    Y = np.array(Y)
-
-                X = utils.transposeList(X)
-                X = [np.array(in_array) for in_array in X]
-
+                X, Y = self.getBatchFromSamples(X, Y)
                 # X also has the labels appended to itself, in case the model needs access to them internally
                 # as part of/before computing the loss (https://github.com/keras-team/keras/issues/4781). 
                 # The second part of the tuple is just a bunch of dummy arrays right now.
@@ -217,7 +231,7 @@ class PointMaskBatchGenerator(BatchGenerator):
     def __init__(self, path, mask_side_len):
         BatchGenerator.__init__(self, path)
         self.mask_side_len = mask_side_len
-        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.011)
+        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.01)
     
     def getLabels(self, coords, im):
         """ Returns heatmaps (1 channel for each coord), along with the summed version. """
@@ -232,9 +246,8 @@ class PointMaskBatchGenerator(BatchGenerator):
         return [heatmap, summed]
 
     def getInputs(self, coords, im):
-        inputs = im
         labels = self.getLabels(coords, im)
-        return [inputs] + labels
+        return [im] + labels
 
     def getOutputs(self, coords, im):
         """ Dummy outputs. Basically for however many non-None loss entries we have in the model."""

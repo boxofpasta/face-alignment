@@ -25,5 +25,11 @@ lip_masker_100 train error for 56x56 (340 epochs @ 8E-3): ~90800
 when using randomized bboxes in training:
 lip_masker_rand_bboxes_100 for 56x56 (480 epochs @ 1E-4): ~91000
 
+point maskers:
+
+losses are put in a list. last one is typically the per-coord softmax loss. 
+before that are sigmoid losses. first one has lowest level features (less meaningful).
+rcf (70 epochs @ 1E-3) : [164366, 189204, 4863]
+
 
 

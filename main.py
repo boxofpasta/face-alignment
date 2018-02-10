@@ -7,6 +7,7 @@ matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
+import modelTests
 from matplotlib.patches import Circle
 from skimage.transform import resize
 import cv2
@@ -21,73 +22,6 @@ from keras.models import load_model
 from keras.applications import mobilenet
 from tensorflow.python import debug as tf_debug
 
-
-def trySavedFullyConnected(model, batch_generator, sample_names=None):
-    if sample_names == None:
-        sample_names = batch_generator.all_names
-
-    for sample_name in sample_names:
-        inputs, outputs = batch_generator.getPair(sample_name)
-
-        # alpha channel needs to be cutoff
-        #if im.shape[2] > 3:
-        #   im = im[:,:,:3]
-        im = inputs[0]
-        labels = np.array(model.predict(np.array(inputs), batch_size=1))
-        label = labels[0]
-        label *= len(im)
-        utils.visualizeCoords(im, label)
-
-def tryLipMaskerZoomed(model, batch_generator, sample_names):
-    for sample_name in sample_names:
-        inputs, outputs = batch_generator.getPair(sample_name)
-        mask_gt = inputs[1]
-        print mask_gt.shape
-        mask_loss, masks = model.predict([inputs], batch_size=1)
-        c = np.zeros((56, 56, 3))
-        mask_gt = cv2.resize(mask_gt, (56, 56), interpolation=cv2.INTER_AREA)
-        c[:,:,0] = masks[0][:,:,0]
-        c[:,:,1] = mask_gt
-        plt.imshow(c)
-        plt.show()
-
-def tryLipMasker(model, batch_generator, sample_names=None):
-    if sample_names == None:
-        sample_names = batch_generator.all_names
-
-    for sample_name in sample_names:
-        inputs, outputs = batch_generator.getPair(sample_name)
-        mask_gt = inputs[2]
-        feed_inputs = utils.transposeList([inputs])
-        feed_inputs = [np.array(cur_input) for cur_input in feed_inputs]
-        mask_loss, bbox_loss, bbox_coords, masks = model.predict(feed_inputs, batch_size=1)
-        
-        c = np.zeros((56, 56, 3))
-        mask_gt_cropped = helenUtils.getCropped(mask_gt, 224 * bbox_coords[0])
-        mask_gt_cropped = cv2.resize(mask_gt_cropped, (56, 56), interpolation=cv2.INTER_AREA)
-        mask_pred = masks[0][:,:,0]
-        mask_pred = 1.0 / (1.0 + np.exp(-mask_pred+0.5))
-        b = bbox_coords[0]
-        c[:,:,0] = mask_pred
-        c[:,:,1] = mask_gt_cropped
-        plt.imshow(c)
-        plt.show()
-
-        im = inputs[0]
-        ax = plt.axes()
-        ax.set_ylim(0, 1)
-        ax.set_xlim(0, 1)
-        #print im.shape
-        #print mask_pred.shape
-        ax.imshow(im, extent=[0, 1, 0, 1])
-        ax.imshow(50 * mask_pred, alpha=0.5, origin='upper', extent=[b[1], b[3], 1.0 - b[2], 1.0 - b[0]])
-        plt.show()
-
-        #helenUtils.visualizeMask(im, masks[0], 224)
-        #helenUtils.visualizeMask(im, masks[0], 56)
-    
-        #helenUtils.visualizeMask(im, mask_gts[0], 224)
-        #helenUtils.visualizeMask(im, mask_gts[0], 28)
 
 def visualizeHeatmaps(sample_names=[]):
     pdfs = utils.getGaussians(10000, 56)
@@ -138,69 +72,6 @@ def getAvgTestError(model, batch_generator):
     error /= (len(all_preds) * batch_generator.num_coords)
     return error
 
-# https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_gui/py_video_display/py_video_display.html
-def videoTestBboxModel(model):
-    cap = cv2.VideoCapture(0)
-    num_frames = 0
-    start = time.clock()
-    im_len = 224
-    while(True):
-        # Capture frame-by-frame
-        ret, frame = cap.read()
-        frame = cv2.resize(frame, (im_len, im_len), interpolation=cv2.INTER_CUBIC)
-        pred = im_len * np.squeeze(model.predict(np.array([frame]), batch_size=1))
-        cv2.rectangle(frame, (pred[0],pred[1]), (pred[2],pred[3]), (0,0,255))
-
-        # Display the resulting frame
-        cv2.imshow('frame',frame)
-        num_frames += 1
-        if num_frames % 50 == 0:
-            print 'Fps : ' + str(num_frames / (time.clock() - start))
-            num_frames = 0
-            start = time.clock()
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    # When everything done, release the capture
-    cap.release()
-    cv2.destroyAllWindows()
-
-def videoTestBboxHaarCascade():
-    cap = cv2.VideoCapture(0)
-    num_frames = 0
-    start = time.clock()
-    im_len = 224
-    face_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_frontalface_default.xml')
-    eye_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_eye.xml')
-    while(True):
-
-        # Capture frame-by-frame
-        ret, frame = cap.read()
-        frame = cv2.resize(frame, (im_len, im_len), interpolation=cv2.INTER_CUBIC)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-        for (x,y,w,h) in faces:
-            cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
-            roi_gray = gray[y:y+h, x:x+w]
-            roi_color = frame[y:y+h, x:x+w]
-            eyes = eye_cascade.detectMultiScale(roi_gray)
-            for (ex,ey,ew,eh) in eyes:
-                cv2.rectangle(roi_color,(ex,ey),(ex+ew,ey+eh),(0,255,0),2)
-
-        # Display the resulting frame
-        cv2.imshow('frame',frame)
-        num_frames += 1
-        if num_frames % 50 == 0:
-            print 'Fps : ' + str(num_frames / (time.clock() - start))
-            num_frames = 0
-            start = time.clock()
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    # When everything done, release the capture
-    cap.release()
-    cv2.destroyAllWindows()
-
 if __name__ == '__main__':
     #sess = K.get_session()
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
@@ -222,7 +93,8 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
     #model = factory.getLipMasker()
     #model = factory.getPointMasker()
-    #model = factory.getSaved('models/tmp/point_masker.h5')
+    model = factory.getSaved('models/point_masker_shallow.h5')
+    #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model.summary()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
@@ -235,9 +107,10 @@ if __name__ == '__main__':
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len)
     
-    inputs, _ = train_batch_generator.getPair(samples[0])
+    """inputs, _ = train_batch_generator.getPair(samples[0])
     im = inputs[0]
     coords_masks = inputs[1]
+    print np.sum(coords_masks[:,:,0])
     summed_coords_masks = np.squeeze(inputs[2])
     plt.imshow(im)
     plt.show()
@@ -247,6 +120,7 @@ if __name__ == '__main__':
 
     plt.imshow(summed_coords_masks)
     plt.show()
+    """
 
     #train_batch_generator = BatchGenerator.MaskAndBboxBatchGenerator('data/train_ibug', factory.mask_side_len)
     #train_batch_generator = BatchGenerator.PointsBatchGenerator('data/train_ibug')
@@ -254,17 +128,18 @@ if __name__ == '__main__':
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
     
     if not train:
+        modelTests.tryPointMasker(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
-        tryLipMasker(model, train_batch_generator)
+        #tryLipMasker(model, train_batch_generator)
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
         model.fit_generator(generator=train_batch_generator.generate(),
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
-                            epochs=70)
+                            epochs=20)
 
         #model.save('models/tmp/lip_fc.h5')
-        model.save('models/tmp/point_masker.h5')
+        model.save('models/tmp/point_masker_shallow.h5')
         #model.save('models/tmp/lip_masker_100.h5')
         #model.save('models/tmp/lip_masker_skip_100.h5')
         if notify_training_complete:

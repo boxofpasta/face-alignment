@@ -127,6 +127,8 @@ class PointMaskSoftmaxLossLayer(Layer):
         labels = tf.reshape(labels, [batch_dim * coords_dim, -1])
         preds = tf.reshape(preds, [batch_dim * coords_dim, -1])
         entropy = tf.nn.softmax_cross_entropy_with_logits(logits=preds, labels=labels)
+        entropy = tf.reshape(entropy, [batch_dim, coords_dim])
+        entropy = tf.reduce_sum(entropy, axis=[1])
         return tf.expand_dims(entropy, axis=1)
 
     def compute_output_shape(self, input_shape):

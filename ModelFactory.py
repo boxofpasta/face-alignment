@@ -139,6 +139,76 @@ class ModelFactory:
         model.compile(loss=self.scaledSquaredDistanceBboxLoss, optimizer='adam')
         return model
 
+    def getLineMasker(self):
+        im_shape = (self.im_width, self.im_height, 3)
+        masks_shape = (self.mask_side_len, self.mask_side_len, self.num_coords)
+        summed_masks_shape = (self.mask_side_len, self.mask_side_len, 1)
+        img_input = Input(shape=im_shape)
+        label_masks = Input(shape=masks_shape)
+        label_summed_masks = Input(shape=summed_masks_shape)
+
+        x = Convolution2D(32, (3, 3), strides=(1, 1), padding='same', use_bias=False)(img_input)
+
+        num_features = [64, 128, 256, 512, 512]
+        z_layers = [None] * 4
+        x, z_layers[0] = layerUtils.rcfBlock(x, 32, num_features[0], 2, z_out_layers=2) 
+        x, z_layers[1] = layerUtils.rcfBlock(x, num_features[0], num_features[1], 2, z_out_layers=4) 
+        x, z_layers[2] = layerUtils.rcfBlock(x, num_features[1], num_features[2], 3, z_out_layers=1)
+        x, z_layers[3] = layerUtils.rcfBlock(x, num_features[2], num_features[3], 3, z_out_layers=1)
+        #x, z_layers[4] = layerUtils.rcfBlock(x, num_features[3], num_features[4], 3, z_out_layers=1)
+        
+        # want 112x112 feature maps
+        z_layers[0] = layerUtils.depthwiseConvBlock(z_layers[0], 2, 4, down_sample=True)
+
+        # upsample 
+        z_layers[2] = Conv2DTranspose(
+            1, kernel_size=(3, 3),
+            strides=(2, 2),
+            activation='linear',
+            padding='same')(z_layers[2])
+        z_layers[2] = Convolution2D(1, (1,1))(z_layers[2])
+
+        z_layers[3] = Conv2DTranspose(
+            1, kernel_size=(3, 3),
+            strides=(4, 4),
+            activation='linear',
+            padding='same')(z_layers[3])
+        z_layers[3] = Convolution2D(1, (1,1))(z_layers[3])
+
+        """
+        # long strides xD
+        z_layers[4] = Conv2DTranspose(
+            1, kernel_size=(3, 3),
+            strides=(8, 8),
+            activation='linear',
+            padding='same')(z_layers[4])"""
+
+        final = Concatenate()(z_layers)
+        final = layerUtils.depthwiseConvBlock(final, 10, 32, down_sample=True)
+        final = layerUtils.depthwiseConvBlock(final, 32, self.num_coords)
+
+        # losses
+        losses = 3 * [None]
+
+        # final prediction is 56x56
+        label_masks_downsampled = layerUtils.Resize(self.mask_side_len/2, tf.image.ResizeMethod.AREA)(label_masks)
+        losses[0] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[2]])
+        losses[1] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[3]])
+        losses[2] = layerUtils.PointMaskSoftmaxLossLayer(self.mask_side_len/2)([label_masks_downsampled, final])
+
+        # names
+        losses[0] = Lambda(lambda x: x, name='z2')(losses[0])
+        losses[1] = Lambda(lambda x: x, name='z3')(losses[1])
+        losses[2] = Lambda(lambda x: x, name='final')(losses[2])
+
+        model = Model(
+            inputs=[img_input, label_masks, label_summed_masks], 
+            outputs=[losses[0], losses[1], losses[2], z_layers[2], z_layers[3], final]
+        )
+        optimizer = optimizers.adam(lr=3E-3)
+        model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None, None], optimizer=optimizer)
+        return model        
+
     def getPointMasker(self):
         im_shape = (self.im_width, self.im_height, 3)
         masks_shape = (self.mask_side_len, self.mask_side_len, self.num_coords)
@@ -150,60 +220,63 @@ class ModelFactory:
         x = Convolution2D(32, (3, 3), strides=(1, 1), padding='same', use_bias=False)(img_input)
 
         num_features = [64, 128, 256, 512, 512]
-        z_layers = [None] * 5
-        x, z_layers[0] = layerUtils.rcfBlock(x, 32, num_features[0], 2, z_out_layers=4) 
+        z_layers = [None] * 4
+        x, z_layers[0] = layerUtils.rcfBlock(x, 32, num_features[0], 2, z_out_layers=2) 
         x, z_layers[1] = layerUtils.rcfBlock(x, num_features[0], num_features[1], 2, z_out_layers=4) 
         x, z_layers[2] = layerUtils.rcfBlock(x, num_features[1], num_features[2], 3, z_out_layers=1)
         x, z_layers[3] = layerUtils.rcfBlock(x, num_features[2], num_features[3], 3, z_out_layers=1)
-        x, z_layers[4] = layerUtils.rcfBlock(x, num_features[3], num_features[4], 3, z_out_layers=1)
+        #x, z_layers[4] = layerUtils.rcfBlock(x, num_features[3], num_features[4], 3, z_out_layers=1)
         
         # want 112x112 feature maps
-        z_layers[0] = layerUtils.depthwiseConvBlock(z_layers[0], 4, 8, down_sample=True)
+        z_layers[0] = layerUtils.depthwiseConvBlock(z_layers[0], 2, 4, down_sample=True)
 
         # upsample 
         z_layers[2] = Conv2DTranspose(
-            4, kernel_size=(3, 3),
+            1, kernel_size=(3, 3),
             strides=(2, 2),
             activation='linear',
             padding='same')(z_layers[2])
+        z_layers[2] = Convolution2D(1, (1,1))(z_layers[2])
 
         z_layers[3] = Conv2DTranspose(
             1, kernel_size=(3, 3),
             strides=(4, 4),
             activation='linear',
             padding='same')(z_layers[3])
+        z_layers[3] = Convolution2D(1, (1,1))(z_layers[3])
 
+        """
         # long strides xD
         z_layers[4] = Conv2DTranspose(
             1, kernel_size=(3, 3),
             strides=(8, 8),
             activation='linear',
-            padding='same')(z_layers[4])
+            padding='same')(z_layers[4])"""
 
         final = Concatenate()(z_layers)
-        final = layerUtils.depthwiseConvBlock(final, 18, 32, down_sample=True)
+        final = layerUtils.depthwiseConvBlock(final, 10, 32, down_sample=True)
         final = layerUtils.depthwiseConvBlock(final, 32, self.num_coords)
 
         # losses
         losses = 3 * [None]
 
-        # final predicition is 56x56
+        # final prediction is 56x56
         label_masks_downsampled = layerUtils.Resize(self.mask_side_len/2, tf.image.ResizeMethod.AREA)(label_masks)
-        losses[0] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[3]])
-        losses[1] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[4]])
+        losses[0] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[2]])
+        losses[1] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[3]])
         losses[2] = layerUtils.PointMaskSoftmaxLossLayer(self.mask_side_len/2)([label_masks_downsampled, final])
 
         # names
-        losses[0] = Lambda(lambda x: x, name='z3')(losses[0])
-        losses[1] = Lambda(lambda x: x, name='z4')(losses[1])
+        losses[0] = Lambda(lambda x: x, name='z2')(losses[0])
+        losses[1] = Lambda(lambda x: x, name='z3')(losses[1])
         losses[2] = Lambda(lambda x: x, name='final')(losses[2])
 
         model = Model(
             inputs=[img_input, label_masks, label_summed_masks], 
-            outputs=[losses[0], losses[1], losses[2], z_layers[4], final]
+            outputs=[losses[0], losses[1], losses[2], z_layers[2], z_layers[3], final]
         )
-        optimizer = optimizers.adam(lr=1E-3)
-        model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
+        optimizer = optimizers.adam(lr=3E-3)
+        model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None, None], optimizer=optimizer)
         return model
 
     def getLipMasker(self, alpha_1=1, alpha_2=1):
