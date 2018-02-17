@@ -7,8 +7,8 @@ import time
 import sys
 import BatchGenerator
 from keras import optimizers
-from keras.layers import Dense, Reshape, BatchNormalization, Flatten
-from keras.layers import Dropout, Conv2DTranspose, Lambda, Concatenate, Add
+from keras.layers import Dense, Reshape, BatchNormalization, Flatten, Multiply, Activation
+from keras.layers import Dropout, Conv2DTranspose, Lambda, Concatenate, Add, MaxPool2D
 from keras.models import Model, Sequential
 from keras.models import load_model
 from keras.applications import mobilenet
@@ -52,7 +52,8 @@ class ModelFactory:
             'CropAndResize' : layerUtils.CropAndResize,
             'Resize': layerUtils.Resize,
             'PerturbBboxes' : layerUtils.PerturbBboxes,
-            'PointMaskSoftmaxLossLayer': layerUtils.PointMaskSoftmaxLossLayer
+            'PointMaskSoftmaxLossLayer': layerUtils.PointMaskSoftmaxLossLayer,
+            'StopGradientLayer': layerUtils.StopGradientLayer
         }
 
     def getSaved(self, path, frozen=False):
@@ -137,77 +138,116 @@ class ModelFactory:
         x = Dense(units=4, activation='linear')(x)
         model = Model(inputs=base_model.input, outputs=x)
         model.compile(loss=self.scaledSquaredDistanceBboxLoss, optimizer='adam')
-        return model
+        return model   
 
-    def getLineMasker(self):
+    def getPointMaskerSmall(self):
         im_shape = (self.im_width, self.im_height, 3)
-        masks_shape = (self.mask_side_len, self.mask_side_len, self.num_coords)
-        summed_masks_shape = (self.mask_side_len, self.mask_side_len, 1)
+
+        # lip only for now
+        l = self.mask_side_len
+        num_coords = 12 
         img_input = Input(shape=im_shape)
-        label_masks = Input(shape=masks_shape)
-        label_summed_masks = Input(shape=summed_masks_shape)
 
-        x = Convolution2D(32, (3, 3), strides=(1, 1), padding='same', use_bias=False)(img_input)
+        # different resolutions. 
+        # we could also just downsample directly here but doing it externally gives better control.
+        label_masks = [
+            Input(shape=(l, l, num_coords)),
+            Input(shape=(l/2, l/2, num_coords)),
+            Input(shape=(l/4, l/4, num_coords)),
+            Input(shape=(l/8, l/8, num_coords))
+        ]
 
-        num_features = [64, 128, 256, 512, 512]
-        z_layers = [None] * 4
-        x, z_layers[0] = layerUtils.rcfBlock(x, 32, num_features[0], 2, z_out_layers=2) 
-        x, z_layers[1] = layerUtils.rcfBlock(x, num_features[0], num_features[1], 2, z_out_layers=4) 
-        x, z_layers[2] = layerUtils.rcfBlock(x, num_features[1], num_features[2], 3, z_out_layers=1)
-        x, z_layers[3] = layerUtils.rcfBlock(x, num_features[2], num_features[3], 3, z_out_layers=1)
-        #x, z_layers[4] = layerUtils.rcfBlock(x, num_features[3], num_features[4], 3, z_out_layers=1)
+        z = []
+
+        # at different resolutions
+        preds = []
+
+        # 224x224
+        x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
+        #x = MaxPool2D()(x)
+
+        # 112x112
+        b = layerUtils.StopGradientLayer()(x)
+        z.append(layerUtils.depthwiseConvBlock(b, 32, num_coords))
+        x = layerUtils.depthwiseConvBlock(x, 32, 64, down_sample=True)
+        #x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        #x = MaxPool2D()(x)
+
+        # 56x56
+        b = layerUtils.StopGradientLayer()(x)
+        z.append(layerUtils.depthwiseConvBlock(b, 64, num_coords))
+        x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
+        #x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        #x = MaxPool2D()(x)
         
-        # want 112x112 feature maps
-        z_layers[0] = layerUtils.depthwiseConvBlock(z_layers[0], 2, 4, down_sample=True)
+        # 28x28
+        b = layerUtils.StopGradientLayer()(x)
+        z.append(layerUtils.depthwiseConvBlock(b, 128, num_coords))
+        x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
+        #x = layerUtils.depthwiseConvBlock(x, 256, 256)
+        #x = MaxPool2D()(x)
 
-        # upsample 
-        z_layers[2] = Conv2DTranspose(
-            1, kernel_size=(3, 3),
-            strides=(2, 2),
-            activation='linear',
-            padding='same')(z_layers[2])
-        z_layers[2] = Convolution2D(1, (1,1))(z_layers[2])
+        # 14x14
+        x = layerUtils.depthwiseConvBlock(x, 256, 64)
+        x = layerUtils.depthwiseConvBlock(x, 64, num_coords)
+        x = layerUtils.depthwiseConvBlock(x, num_coords, num_coords, kernel_size=(5,5), final_activation='linear')
+        z.append(x)
 
-        z_layers[3] = Conv2DTranspose(
-            1, kernel_size=(3, 3),
-            strides=(4, 4),
-            activation='linear',
-            padding='same')(z_layers[3])
-        z_layers[3] = Convolution2D(1, (1,1))(z_layers[3])
+        losses = []
+        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l/8)([label_masks[-1], x]))
+        x = Activation('sigmoid')(x)
+        preds.append(x)
+        
+        # up-sampling chain
+        method = tf.image.ResizeMethod.BILINEAR
+        x = layerUtils.Resize(28, method)(x)
+        x = layerUtils.StopGradientLayer()(x)
+        x = Multiply()([x, z[2]])
+        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l/4)([label_masks[-2], x]))
+        x = Activation('sigmoid')(x)
+        preds.append(x)
 
-        """
-        # long strides xD
-        z_layers[4] = Conv2DTranspose(
-            1, kernel_size=(3, 3),
-            strides=(8, 8),
-            activation='linear',
-            padding='same')(z_layers[4])"""
+        x = layerUtils.Resize(56, method)(x)
+        x = layerUtils.StopGradientLayer()(x)
+        x = Multiply()([x, z[1]])
+        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l/2)([label_masks[-3], x]))
+        x = Activation('sigmoid')(x)
+        preds.append(x)
 
-        final = Concatenate()(z_layers)
-        final = layerUtils.depthwiseConvBlock(final, 10, 32, down_sample=True)
-        final = layerUtils.depthwiseConvBlock(final, 32, self.num_coords)
+        x = layerUtils.Resize(112, method)(x)
+        x = layerUtils.StopGradientLayer()(x)
+        x = Multiply()([x, z[0]])
+        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
+        x = BatchNormalization()(x)
+        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks[-4], x]))
+        x = Activation('sigmoid')(x)
+        preds.append(x)
 
-        # losses
-        losses = 3 * [None]
-
-        # final prediction is 56x56
-        label_masks_downsampled = layerUtils.Resize(self.mask_side_len/2, tf.image.ResizeMethod.AREA)(label_masks)
-        losses[0] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[2]])
-        losses[1] = layerUtils.MaskSigmoidLossLayerNoCrop(self.mask_side_len)([label_summed_masks, z_layers[3]])
-        losses[2] = layerUtils.PointMaskSoftmaxLossLayer(self.mask_side_len/2)([label_masks_downsampled, final])
-
-        # names
-        losses[0] = Lambda(lambda x: x, name='z2')(losses[0])
-        losses[1] = Lambda(lambda x: x, name='z3')(losses[1])
-        losses[2] = Lambda(lambda x: x, name='final')(losses[2])
-
+        # they both end up being from highest to lowest resolution, same order as z
+        losses.reverse()
+        preds.reverse()
+        losses[0] = Lambda(lambda x: 0 * x, name='f0')(losses[0])
+        losses[1] = Lambda(lambda x: x, name='f1')(losses[1])
+        losses[2] = Lambda(lambda x: x, name='f2')(losses[2])
+        losses[3] = Lambda(lambda x: x, name='f3')(losses[3])
+        
         model = Model(
-            inputs=[img_input, label_masks, label_summed_masks], 
-            outputs=[losses[0], losses[1], losses[2], z_layers[2], z_layers[3], final]
+            inputs=[img_input] + label_masks, 
+            outputs=[losses[0], losses[1], losses[2], losses[3], preds[1], preds[-1]]
         )
         optimizer = optimizers.adam(lr=3E-3)
-        model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None, None], optimizer=optimizer)
-        return model        
+        model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
+        return model
 
     def getPointMasker(self):
         im_shape = (self.im_width, self.im_height, 3)

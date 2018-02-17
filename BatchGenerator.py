@@ -6,6 +6,7 @@ import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
 import json 
 import time
+import cv2
 
 """
 This file contains BatchGenerator (which returns unaltered helen labels as float array),
@@ -90,8 +91,8 @@ class BatchGenerator:
         X, Y = [], []
         for name in sample_names:
             x, y = self.getPair(name)
-            X.push(x)
-            Y.push(y)
+            X.append(x)
+            Y.append(y)
         return self.getBatchFromSamples(X, Y)
     
     def getBatchFromSamples(self, X, Y):
@@ -231,12 +232,30 @@ class PointMaskBatchGenerator(BatchGenerator):
     def __init__(self, path, mask_side_len):
         BatchGenerator.__init__(self, path)
         self.mask_side_len = mask_side_len
-        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.01)
+
+        # 0 for most precise
+        self.pdfs = 4 * [None]
+        self.pdfs[0] = utils.getGaussians(10000, self.mask_side_len, stddev=0.008)
+        self.pdfs[1] = utils.getGaussians(10000, self.mask_side_len/2, stddev=0.015)
+        self.pdfs[2] = utils.getGaussians(10000, self.mask_side_len/4, stddev=0.03)
+        self.pdfs[3] = utils.getGaussians(10000, self.mask_side_len/8, stddev=0.05)
     
     def getLabels(self, coords, im):
-        """ Returns heatmaps (1 channel for each coord), along with the summed version. """
         coords = np.reshape(coords, (self.num_coords, 2))
-        heatmap = utils.coordsToHeatmapsFast(coords, self.pdfs)
+        lip_coords = helenUtils.getLipCoords(coords)
+
+        labels = []
+        for i in range(len(self.pdfs)):
+            masks = utils.coordsToHeatmapsFast(lip_coords, self.pdfs[i])
+            masks = np.moveaxis(masks, 0, -1)
+            masks /= (0.02 * np.max(masks, axis=(0,1)))
+            masks = np.minimum(masks, 1.0)
+            l = self.mask_side_len / 2**i
+            masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
+            labels.append(masks)
+
+        """
+        masks_0 = utils.coordsToHeatmapsFast(coords, self.pdfs)
         heatmap = np.moveaxis(heatmap, 0, -1)
         heatmap /= np.sum(heatmap, axis=(0,1))
         summed = np.sum(heatmap, axis=-1)
@@ -244,6 +263,8 @@ class PointMaskBatchGenerator(BatchGenerator):
         summed = np.minimum(summed, 1.0)
         summed = np.expand_dims(summed, axis=-1)
         return [heatmap, summed]
+        """
+        return labels
 
     def getInputs(self, coords, im):
         labels = self.getLabels(coords, im)
@@ -251,4 +272,22 @@ class PointMaskBatchGenerator(BatchGenerator):
 
     def getOutputs(self, coords, im):
         """ Dummy outputs. Basically for however many non-None loss entries we have in the model."""
-        return [0, 0, 0]
+        return [0, 0, 0, 0]
+
+
+class LineMaskBatchGenerator(BatchGenerator):
+
+    def __init__(self, path, mask_side_len):
+        self.mask_side_len = mask_side_len
+        BatchGenerator.__init__(self, path)
+
+    def getOutputs(self, coords, im):
+        return [0]
+    
+    def getInputs(self, coords, im):
+        return [im] + self.getLabels(coords, im)
+
+    def getLabels(self, coords, im):
+        lip_coords = helenUtils.getLipCoords(coords)
+        line_mask = helenUtils.getLipLineMask(lip_coords, np.shape(im), (self.mask_side_len, self.mask_side_len))
+        return [line_mask]

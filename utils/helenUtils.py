@@ -10,7 +10,7 @@ import cv2
 from PIL import Image
 from matplotlib.patches import Circle
 from matplotlib.patches import Polygon
-from scipy.interpolate import spline
+from scipy.interpolate import interp1d
 from skimage.draw import line_aa
 
 
@@ -351,26 +351,29 @@ def getLipLineMask(lip_coords, in_shape, out_shape):
 
     # https://stackoverflow.com/questions/5283649/plot-smooth-line-with-pyplot
     lip_coords = np.array(lip_coords)
-    x = lip_coords[:,1]
-    y = lip_coords[:,0]
+    x = in_shape[1] * lip_coords[:,1]
+    y = in_shape[0] * lip_coords[:,0]
     pts = 40
 
     # p0 -> p6
     x_new = np.linspace(x[0], x[6], pts / 2)
-    y_new_top = spline(x[0:7], y[0:7], x_new)
+    y_new_top = interp1d(x[0:7], y[0:7], kind='cubic')(x_new)
 
     # p6 -> p11 -> p0
-    x_new = np.linspace(x[6], x[0], pts / 2)
-    x_bot = np.concatenate([x[6:], x[0])
-    y_bot = np.concatenate([y[6:], y[0]])
-    y_new_bot = spline(x_bot, y_bot, x_new)
+    x_new = np.linspace(x[0], x[6], pts / 2)
+
+    x_bot = np.flip(np.concatenate([x[6:], [x[0]]]), axis=0)
+    y_bot = np.flip(np.concatenate([y[6:], [y[0]]]), axis=0)
+
+    y_new_bot = interp1d(x_bot, y_bot, kind='cubic')(x_new)
 
     # draw into an image with many times as many pixels, as line_aa only works with integer coords
-    mult = 4
+    mult = 1
     draw_shape = (in_shape[0] * mult, in_shape[1] * mult)
-    x_new = np.rint(mult * x_new)
-    y_new_top = np.rint(mult * y_new_top)
-    y_new_bot = np.rint(mult * y_new_bot)
+
+    x_new = np.rint(mult * np.array(x_new)).astype(int)
+    y_new_top = np.rint(mult * np.array(y_new_top)).astype(int)
+    y_new_bot = np.rint(mult * np.array(y_new_bot)).astype(int)
     img = np.zeros(draw_shape, dtype=np.uint8)
 
     # draw the anti-aliased lines
@@ -384,12 +387,18 @@ def getLipLineMask(lip_coords, in_shape, out_shape):
         rr, cc, val = line_aa(y_new_bot[i], x_new[i], y_new_bot[i+1], x_new[i+1])
         img[rr, cc] = val * 255
 
+    kernel_width = int(0.005 * len(img[0]))
+    kernel_height = int(0.005 * len(img))
+    kernel = np.ones((kernel_width, kernel_height))
+    img = cv2.dilate(img, kernel, iterations=1)
+
     #rr, cc, val = line_aa(1, 1, 8, 4)
     #img[rr, cc] = val * 255
     #scipy.misc.imsave("out.png", img)
 
-    plt.imshow(img)
-    plt.show()
+    img = img.astype(np.float32)
+    img = cv2.resize(img, out_shape, interpolation=cv2.INTER_AREA)
+    return img
 
 
 def trySerializedSample(npy_path, name, targ_im_len):
@@ -422,9 +431,10 @@ def visualizeMask(im, mask, targ_im_len=-1):
         im = cv2.resize(im, (targ_im_len, targ_im_len), interpolation=im_resize_method)
         mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=mask_resize_method)
 
-    mask = (80 * mask).astype(np.uint8)
+    mask = mask.astype(np.uint8)
     rem = 255 - im[:,:,1]
     im[:,:,1] += np.minimum(rem, mask)
+    #plt.imshow(mask)
     plt.imshow(im)
     plt.show()
 

@@ -31,5 +31,22 @@ losses are put in a list. last one is typically the per-coord softmax loss.
 before that are sigmoid losses. first one has lowest level features (less meaningful).
 rcf (70 epochs @ 1E-3) : [164366, 189204, 4863]
 
+small point masker:
+(100 epochs @ 1E-3) : loss: 212788.3571 - f0_loss: 55532.1652 - f1_loss: 60587.4566 - f2_loss: 83933.9861 - f3_loss: 12734.7497
 
+for 14x14 resolution, lowest resolution loss:
+    guessing all 0s:
+    52170.3648
 
+    fairly decent results:
+    ~49900 
+
+# stddevs : [0.008, 0.02, 0.03, 0.05]
+(120 epochs @ 3E-3) : loss: 76760.3013 - f0_loss: 0.0000e+00 - f1_loss: 25798.5723 - f2_loss: 38718.6256 - f3_loss: 12243.1034
+
+# after adding stop_gradient for the conditioning masks from lower-res layers
+# stddevs : [0.008, 0.015, 0.03, 0.05]
+(120 epochs @ 3E-3) : loss: 44274.7353 - f0_loss: 0.0000e+00 - f1_loss: 36356.2732 - f2_loss: 5704.4272 - f3_loss: 2214.0351
+
+# this sample is problematic (left eye identifies as a lip)
+1198061571_1

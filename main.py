@@ -92,10 +92,10 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_rand_bbox_100.h5')
     #model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
     #model = factory.getLipMasker()
-    #model = factory.getPointMasker()
-    model = factory.getSaved('models/point_masker_shallow.h5')
+    #model = factory.getPointMaskerSmall()
+    model = factory.getSaved('models/tmp/point_masker_small.h5')
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
-    #model.summary()
+    model.summary()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
     #model = factory.getBboxRegressor()
@@ -106,7 +106,20 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_050.h5')
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len)
-    
+    #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
+
+    """for sample in samples:
+        inputs, _ = train_batch_generator.getPair(sample)
+        im = inputs[0] #im = cv2.resize(inputs[0], (112, 112), interpolation=cv2.INTER_AREA)
+        plt.imshow(im)
+        plt.show()
+        for i in range(1, len(inputs)):
+            mask = inputs[i]
+            plt.imshow(mask[:,:,0])
+            plt.show()
+            #helenUtils.visualizeMask(im, mask)
+    """
+
     """inputs, _ = train_batch_generator.getPair(samples[0])
     im = inputs[0]
     coords_masks = inputs[1]
@@ -136,10 +149,10 @@ if __name__ == '__main__':
     if train:
         model.fit_generator(generator=train_batch_generator.generate(),
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
-                            epochs=20)
+                            epochs=30)
 
         #model.save('models/tmp/lip_fc.h5')
-        model.save('models/tmp/point_masker_shallow.h5')
+        model.save('models/tmp/point_masker_small.h5')
         #model.save('models/tmp/lip_masker_100.h5')
         #model.save('models/tmp/lip_masker_skip_100.h5')
         if notify_training_complete:

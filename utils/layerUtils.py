@@ -180,11 +180,11 @@ class MaskSigmoidLossLayerNoCrop(Layer):
         #labels = Resize(self.mask_side_len)(labels)
 
         # should just be single channel images
-        labels = tf.squeeze(labels, axis=-1)
-        preds = tf.squeeze(preds, axis=-1)
+        #labels = tf.squeeze(labels, axis=-1)
+        #preds = tf.squeeze(preds, axis=-1)
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
         #loss = tf.reshape(tf.reduce_sum(cross_entropy), (1,))
-        return tf.expand_dims(tf.reduce_sum(cross_entropy,axis=[1,2]), axis=1)
+        return tf.expand_dims(tf.reduce_sum(cross_entropy,axis=[1,2,3]), axis=1)
         #return tf.reduce_sum(cross_entropy)
 
     def compute_output_shape(self, input_shape):
@@ -195,6 +195,15 @@ class MaskSigmoidLossLayerNoCrop(Layer):
         base_config = super(MaskSigmoidLossLayerNoCrop, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))  
 
+class StopGradientLayer(Layer):
+    def __init__(self,  **kwargs):
+        super(StopGradientLayer, self).__init__(**kwargs)
+
+    def call(self, x):
+        return tf.stop_gradient(x)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 class SquaredDistanceLossLayer(Layer):
 
@@ -213,14 +222,14 @@ class SquaredDistanceLossLayer(Layer):
         return (input_shape[0][0],1)
 
 
-def depthwiseConvBlock(x, features_in, features_out, down_sample=False, kernel_size=(3,3)):
+def depthwiseConvBlock(x, features_in, features_out, down_sample=False, kernel_size=(3,3), final_activation='relu'):
     strides = (2, 2) if down_sample else (1, 1)
     x = DepthwiseConvolution2D(int(features_in), kernel_size, strides=strides, padding='same', use_bias=False)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Convolution2D(int(features_out), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
     x = BatchNormalization()(x)
-    x = Activation('relu')(x)
+    x = Activation(final_activation)(x)
     return x
 
 def resizeConvBlock(x, out_res, features_in, features_out):
