@@ -239,6 +239,26 @@ def visualizeBboxes(im, boxes):
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
+def imSoftmax(x):
+    """
+    Image should be of shape = (height, width, channels).
+    This will take a per-channel softmax.
+    Return value will be of the same shape as input.
+    """
+    channels = x.shape[2]
+    height = x.shape[0]
+    x = np.moveaxis(x, -1, 0)
+    x = np.reshape(x, (channels, -1))
+
+    x = [softmax(d) for d in x]
+    x = np.reshape(x, (channels, height, -1))
+    x = np.moveaxis(x, 0, -1)
+    return x
+
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
+
 def informProgress(iter, total):
     milestone = max(total / 100, 1)
     if iter != 0 and iter % milestone == 0:

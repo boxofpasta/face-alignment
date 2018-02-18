@@ -109,7 +109,6 @@ class Resize(Layer):
         config = {'out_im_res': self.out_im_res, 'method': self.method}
         base_config = super(Resize, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-    
 
 class PointMaskSoftmaxLossLayer(Layer):
     def __init__(self, mask_side_len, **kwargs):
@@ -222,9 +221,10 @@ class SquaredDistanceLossLayer(Layer):
         return (input_shape[0][0],1)
 
 
-def depthwiseConvBlock(x, features_in, features_out, down_sample=False, kernel_size=(3,3), final_activation='relu'):
+def depthwiseConvBlock(x, features_in, features_out, down_sample=False, 
+                        kernel_size=(3,3), final_activation='relu', dilation_rate=[1,1]):
     strides = (2, 2) if down_sample else (1, 1)
-    x = DepthwiseConvolution2D(int(features_in), kernel_size, strides=strides, padding='same', use_bias=False)(x)
+    x = DepthwiseConvolution2D(int(features_in), kernel_size, strides=strides, padding='same', use_bias=False, dilation_rate=dilation_rate)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Convolution2D(int(features_out), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)

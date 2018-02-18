@@ -31,6 +31,9 @@ losses are put in a list. last one is typically the per-coord softmax loss.
 before that are sigmoid losses. first one has lowest level features (less meaningful).
 rcf (70 epochs @ 1E-3) : [164366, 189204, 4863]
 
+# ------------------------------
+# Week of February 11:
+# ------------------------------
 small point masker:
 (100 epochs @ 1E-3) : loss: 212788.3571 - f0_loss: 55532.1652 - f1_loss: 60587.4566 - f2_loss: 83933.9861 - f3_loss: 12734.7497
 
@@ -50,3 +53,22 @@ for 14x14 resolution, lowest resolution loss:
 
 # this sample is problematic (left eye identifies as a lip)
 1198061571_1
+
+# vanilla point masker
+# stddev for 56x56 : 0.02
+(180 epochs? @ 5E-3) : loss: 5477.5687 - f0_loss: 5477.5687 - val_loss: 8123.8908 - val_f0_loss: 8123.8908
+
+# fancy point masker
+
+# vanilla point masker, no skip connections
+(160 epochs? @ 1E-2) : 142ms/step - loss: 5903.6019 - f0_loss: 5903.6019 - val_loss: 8774.8352 - val_f0_loss: 8774.8352
+
+# removed 256 deep layer, changed kernel size from 3x3 to 7x7 for 14x14 feature map
+(260 epochs @ 5E-3) : loss: 5239.6429 - f0_loss: 5239.6429 - val_loss: 7949.9180 - val_f0_loss: 7949.9180
+2728400620_1 -- really bad on left side of lip
+2139669544_1 -- right part of lip is in the dark, tough one
+1037255513_1 -- really bad on left side of lip
+2426631349_1 -- epic fail on top side of lip
+
+# same model but trained on x-flipped data
+(350 epochs @ 5E-3) : loss: 5301.4107 - f0_loss: 5301.4107 - val_loss: 8046.8749 - val_f0_loss: 8046.8749

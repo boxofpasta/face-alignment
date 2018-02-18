@@ -53,6 +53,7 @@ class DepthwiseConv2D(Conv2D):
                  activity_regularizer=None,
                  depthwise_constraint=None,
                  bias_constraint=None,
+                 dilation_rate=[1,1],
                  **kwargs):
         super(DepthwiseConv2D, self).__init__(
             filters=filters,
@@ -66,7 +67,8 @@ class DepthwiseConv2D(Conv2D):
             activity_regularizer=activity_regularizer,
             bias_constraint=bias_constraint,
             **kwargs)
-
+        
+        self.dilation_rate = dilation_rate
         self.depth_multiplier = depth_multiplier
         self.depthwise_initializer = initializers.get(depthwise_initializer)
         self.depthwise_regularizer = regularizers.get(depthwise_regularizer)
@@ -120,6 +122,7 @@ class DepthwiseConv2D(Conv2D):
         padding = _preprocess_padding(self.padding)
         strides = (1,) + self.strides + (1,)
 
+        print 'using dilation rate ' + str(self.dilation_rate)
         outputs = tf.nn.depthwise_conv2d(inputs, self.depthwise_kernel,
                                          strides=strides,
                                          padding=padding,

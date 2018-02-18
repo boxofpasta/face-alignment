@@ -326,14 +326,27 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                     labels[key] = cur_labels
     return labels
 
-def getLipCoords(coords):
+def getLipCoords(coords, flip_x=False):
     """
     Only works for the ibug annotated version currently.
     Parameters
     ----------
     coords: 
         Should have shape (num_coords, 2).
+    flip_x: 
+        If true, coordinates will correspond to image with with x-axis flipped. 
+        Note that coordinate indices will still be following the same order as the original points.
     """
+    if flip_x:
+        c = np.copy(coords[48:60])
+        c[:,1] = 1.0 - c[:,1]
+        c[0], c[6] = c[6], c[0].copy()
+        c[1], c[5] = c[5], c[1].copy()
+        c[2], c[4] = c[4], c[2].copy()
+        c[11], c[7] = c[7], c[11].copy()
+        c[10], c[8] = c[8], c[10].copy()
+        return c
+
     return coords[48:60]
 
 def getLipLineMask(lip_coords, in_shape, out_shape):

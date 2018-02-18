@@ -1,9 +1,13 @@
+import sys
+train = bool(int(sys.argv[1]))
+
 import os
 import time
 import scipy.misc
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')
+if not train:
+    matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -13,7 +17,6 @@ from skimage.transform import resize
 import cv2
 import json
 import time
-import sys
 import ModelFactory
 import BatchGenerator
 import keras.backend as K
@@ -76,7 +79,6 @@ if __name__ == '__main__':
     #sess = K.get_session()
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
     #K.set_session(sess)
-    train = False
     notify_training_complete = True
     samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
     
@@ -92,9 +94,15 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_rand_bbox_100.h5')
     #model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
     #model = factory.getLipMasker()
+    #model_path = 'models/tmp/point_masker_small.h5'
+    #model_path = 'models/tmp/point_masker_vanilla_no_skip.h5'
+    model_path = 'models/tmp/point_masker_dilated.h5'
     #model = factory.getPointMaskerSmall()
-    model = factory.getSaved('models/tmp/point_masker_small.h5')
+    #model = factory.getPointMaskerVanilla()
+    model = factory.getPointMaskerDilated()
+    #model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
+    #model = factory.getSaved(model_path)
     model.summary()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
@@ -105,10 +113,15 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_sep_100.h5')
     #model = factory.getSaved('models/lip_masker_050.h5')
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
-    train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len)
+    #train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len, val_split_perc=0.2)
+    train_batch_generator = BatchGenerator.PointMaskVanillaBatchGenerator('data/train_ibug', 
+                                                                          factory.mask_side_len, 
+                                                                          val_split_perc=0.2,
+                                                                          flip_x_augmentation=True)
     #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
 
-    """for sample in samples:
+    """
+    for sample in samples:
         inputs, _ = train_batch_generator.getPair(sample)
         im = inputs[0] #im = cv2.resize(inputs[0], (112, 112), interpolation=cv2.INTER_AREA)
         plt.imshow(im)
@@ -120,20 +133,20 @@ if __name__ == '__main__':
             #helenUtils.visualizeMask(im, mask)
     """
 
-    """inputs, _ = train_batch_generator.getPair(samples[0])
+
+    """inputs, _ = train_batch_generator.getPair(samples[0], flip_x=True)
     im = inputs[0]
     coords_masks = inputs[1]
     print np.sum(coords_masks[:,:,0])
-    summed_coords_masks = np.squeeze(inputs[2])
     plt.imshow(im)
     plt.show()
-    for i in range(0, 2):
-        plt.imshow(coords_masks[:,:,i])
-        plt.show()
-
-    plt.imshow(summed_coords_masks)
-    plt.show()
+    for i in range(12):
+        coord_mask = 80.0 * coords_masks[:,:,i]
+        coord_mask = cv2.resize(coord_mask, (224, 224), interpolation=cv2.INTER_LINEAR)
+        helenUtils.visualizeMask(im, coord_mask)
     """
+    
+
 
     #train_batch_generator = BatchGenerator.MaskAndBboxBatchGenerator('data/train_ibug', factory.mask_side_len)
     #train_batch_generator = BatchGenerator.PointsBatchGenerator('data/train_ibug')
@@ -141,18 +154,25 @@ if __name__ == '__main__':
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
     
     if not train:
-        modelTests.tryPointMasker(model, train_batch_generator)
+        modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        model.fit_generator(generator=train_batch_generator.generate(),
-                            steps_per_epoch=train_batch_generator.steps_per_epoch,
-                            epochs=30)
-
+        total_epochs = 180
+        epochs_before_saving = 30
+        cur_epoch = 0
+        while cur_epoch < total_epochs:
+            cur_num_epochs = min(total_epochs - cur_epoch, epochs_before_saving)
+            model.fit_generator(generator=train_batch_generator.generate(),
+                                validation_data=train_batch_generator.getValData(),  
+                                steps_per_epoch=train_batch_generator.steps_per_epoch,
+                                epochs=cur_num_epochs)
+            model.save(model_path)
+            cur_epoch += cur_num_epochs
+            print 'Finished training for: ' + str(cur_epoch) + ' epochs'
         #model.save('models/tmp/lip_fc.h5')
-        model.save('models/tmp/point_masker_small.h5')
         #model.save('models/tmp/lip_masker_100.h5')
         #model.save('models/tmp/lip_masker_skip_100.h5')
         if notify_training_complete:
