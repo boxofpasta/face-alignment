@@ -236,6 +236,36 @@ def visualizeBboxes(im, boxes):
         ax.plot([box[0], box[0]], [box[3], box[1]], '-', color=color)
     plt.show()
 
+def getCoordsFromPointMasks(masks, targ_width, targ_height):
+    """
+    Parameters
+    ----------
+    masks: 
+        Should be of shape (num_coords, height, width)
+    
+    Returns
+    -------
+    Array of shape (num_coords, 2). Coordinates are wrt mask image dimensions.
+    """
+    coords = []
+    for coord_mask in masks:
+        # normalize mask
+        width_factor = targ_width / len(coord_mask[0])
+        height_factor = targ_height / len(coord_mask)
+        coord_mask /= np.sum(coord_mask)
+        x_inds = np.arange(0, len(coord_mask[0]))
+        y_inds = np.arange(0, len(coord_mask))
+        x_avg = width_factor * np.sum(np.array([x_inds]) * coord_mask)
+        y_avg = height_factor * np.sum(np.transpose(np.array([y_inds])) * coord_mask)
+        #plt.imshow(coord_mask)
+        #plt.show()
+        #print x_avg
+        #print y_avg
+        coords.append([y_avg, x_avg])
+    
+    return coords
+
+
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 

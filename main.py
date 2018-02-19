@@ -96,11 +96,11 @@ if __name__ == '__main__':
     #model = factory.getLipMasker()
     #model_path = 'models/tmp/point_masker_small.h5'
     #model_path = 'models/tmp/point_masker_vanilla_no_skip.h5'
-    model_path = 'models/tmp/point_masker_dilated.h5'
+    model_path = 'models/tmp/point_masker_dilated_v2.h5'
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerVanilla()
-    model = factory.getPointMaskerDilated()
-    #model = factory.getSaved(model_path)
+    #model = factory.getPointMaskerDilated()
+    model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
     model.summary()

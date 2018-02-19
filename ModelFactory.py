@@ -265,21 +265,21 @@ class ModelFactory:
         x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         # 112x112 resolution
         
+        x = layerUtils.depthwiseConvBlock(x, 32, 32)
         x = layerUtils.depthwiseConvBlock(x, 32, 64, down_sample=True)
         # 56x56 resolution
-        # 7x7 receptive field
+        # 11x11 receptive field wrt image
         
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[2,2])
-        # 15x15 receptive field
-
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[4,4])
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[8,8])
-        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[16,16])
-        x = layerUtils.depthwiseConvBlock(x, 64, 64)
-        x = layerUtils.depthwiseConvBlock(x, 64, 64)
-        # 135x135 receptive field
+        x = layerUtils.depthwiseConvBlock(x, 64, 128, dilation_rate=[16,16])
+        
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        #x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        # 139x139 receptive field wrt image (deprecated, needs manual update)
 
-        x = layerUtils.depthwiseConvBlock(x, 64, num_coords, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
 
         #loss = layerUtils.PointMaskSoftmaxLossLayer(l)([label_masks, x])
         loss = layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks, x])
@@ -291,7 +291,7 @@ class ModelFactory:
             inputs=[img_input, label_masks], 
             outputs=[loss, pred]
         )
-        optimizer = optimizers.adam(lr=5E-3)
+        optimizer = optimizers.adam(lr=1E-2)
         model.compile(loss=[self.identityLoss, None], optimizer=optimizer)
         return model
 

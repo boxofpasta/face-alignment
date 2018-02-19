@@ -72,3 +72,9 @@ for 14x14 resolution, lowest resolution loss:
 
 # same model but trained on x-flipped data
 (350 epochs @ 5E-3) : loss: 5301.4107 - f0_loss: 5301.4107 - val_loss: 8046.8749 - val_f0_loss: 8046.8749
+
+# dilated convolutions model @ commit c183f349bbaf1d28ce952ab8e22fd1f9189f58c0
+(140 epochs? @ 5E-3) : loss: 5713.1293 - f0_loss: 5713.1293 - val_loss: 7471.6771 - val_f0_loss: 7471.6771
+
+# without the final 16-dilated layer and 1 extra conv layer at 112 resolution
+(150 epochs? @ 1E-2) : loss: 5828.1249 - f0_loss: 5828.1249 - val_loss: 7757.0386 - val_f0_loss: 7757.0386
