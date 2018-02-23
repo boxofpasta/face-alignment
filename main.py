@@ -6,6 +6,7 @@ import time
 import scipy.misc
 import numpy as np
 import matplotlib
+import keras
 if not train:
     matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
@@ -96,7 +97,9 @@ if __name__ == '__main__':
     #model = factory.getLipMasker()
     #model_path = 'models/tmp/point_masker_small.h5'
     #model_path = 'models/tmp/point_masker_vanilla_no_skip.h5'
-    model_path = 'models/tmp/point_masker_dilated_v2.h5'
+    model_name = 'point_masker_dilated'
+    model_folder = 'models/' + model_name
+    model_path = model_folder + '/model.h5'
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerVanilla()
     #model = factory.getPointMaskerDilated()
@@ -114,10 +117,17 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_050.h5')
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     #train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len, val_split_perc=0.2)
-    train_batch_generator = BatchGenerator.PointMaskVanillaBatchGenerator('data/train_ibug', 
-                                                                          factory.mask_side_len, 
-                                                                          val_split_perc=0.2,
+    path = 'data/train_ibug'
+    with open(path + '/names.json') as fp:
+        all_names = json.load(fp)
+
+    val_split_ratio = 0.2
+    split_val = int(len(all_names) * val_split_ratio)
+    all_val_names = all_names[:split_val]
+    all_train_names = all_names[split_val:]
+    train_batch_generator = BatchGenerator.PointMaskVanillaBatchGenerator(all_train_names, path, factory.mask_side_len, 
                                                                           flip_x_augmentation=True)
+    val_batch_generator = BatchGenerator.PointMaskVanillaBatchGenerator(all_val_names, path, factory.mask_side_len)
     #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
 
     """
@@ -154,24 +164,36 @@ if __name__ == '__main__':
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
     
     if not train:
-        modelTests.tryPointMaskerVanilla(model, train_batch_generator)
+        val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, path)
+        print modelTests.getNormalizedDistanceError(model, val_batch_generator)
+        #modelTests.videoTest(model)
+        #modelTests.tryPointMaskerDilatedOnSamples(model)
+        #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        total_epochs = 180
+        total_epochs = 120
         epochs_before_saving = 30
+        prev_epochs = 0
         cur_epoch = 0
         while cur_epoch < total_epochs:
             cur_num_epochs = min(total_epochs - cur_epoch, epochs_before_saving)
+            tb_log_dir = model_folder + '/tensorboard/'
+            tb_callback = keras.callbacks.TensorBoard(log_dir=tb_log_dir, 
+                                                      histogram_freq=0, #cur_num_epochs, 
+                                                      write_graph=True, 
+                                                      write_images=True)
             model.fit_generator(generator=train_batch_generator.generate(),
-                                validation_data=train_batch_generator.getValData(),  
+                                validation_data=val_batch_generator.getAllData(),  
                                 steps_per_epoch=train_batch_generator.steps_per_epoch,
-                                epochs=cur_num_epochs)
+                                epochs=cur_num_epochs,
+                                callbacks=[tb_callback])
             model.save(model_path)
             cur_epoch += cur_num_epochs
-            print 'Finished training for: ' + str(cur_epoch) + ' epochs'
+            print 'Finished training for: ' + str(cur_epoch) + ' epochs, saving to: ' + model_path
+        
         #model.save('models/tmp/lip_fc.h5')
         #model.save('models/tmp/lip_masker_100.h5')
         #model.save('models/tmp/lip_masker_skip_100.h5')

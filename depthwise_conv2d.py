@@ -122,7 +122,7 @@ class DepthwiseConv2D(Conv2D):
         padding = _preprocess_padding(self.padding)
         strides = (1,) + self.strides + (1,)
 
-        print 'using dilation rate ' + str(self.dilation_rate)
+        #print 'using dilation rate ' + str(self.dilation_rate)
         outputs = tf.nn.depthwise_conv2d(inputs, self.depthwise_kernel,
                                          strides=strides,
                                          padding=padding,

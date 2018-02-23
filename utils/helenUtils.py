@@ -192,8 +192,8 @@ def resizePair(im, label, targ_width, targ_height):
 def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
     lip_coords = getLipCoords(label)
-    #bbox = utils.getBbox(label)
-    bbox = utils.getBbox(lip_coords)
+    bbox = utils.getBbox(label)
+    #bbox = utils.getBbox(lip_coords)
 
     # randomly expand facebox
     #bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
@@ -202,6 +202,19 @@ def cropPair(im, label):
     label[:,1] -= bbox[1]
     im = getCropped(im, bbox)
     return [im, label]
+
+def getLeyeCenter(coords):
+    leye_coords = coords[36:42]
+    return np.array([np.mean(leye_coords[:,0]), np.mean(leye_coords[:,1])])
+
+def getReyeCenter(coords):
+    reye_coords = coords[42:48]
+    return np.array([np.mean(reye_coords[:,0]), np.mean(reye_coords[:,1])])
+
+def getEyeDistance(coords):
+    leye_center = getLeyeCenter(coords)
+    reye_center = getReyeCenter(coords)
+    return np.linalg.norm(leye_center - reye_center)
 
 def getCropped(im, bbox):
     l = int(max(0, bbox[1]))

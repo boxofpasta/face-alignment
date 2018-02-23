@@ -10,6 +10,7 @@ from matplotlib.patches import Polygon
 from PIL import Image, ImageDraw
 import cv2
 import time
+import tensorflow as tf
 import matplotlib.lines as mlines
 
 def transposeList(l):
@@ -217,6 +218,12 @@ def getExpandedBbox(bbox, ratio_x, ratio_y):
         bbox[3] + x_pad
     ])
 
+def expandDimsRepeatedly(x, num_expansions, front=True):
+    axis = 0 if front else -1
+    for i in range(num_expansions):
+        x = tf.expand_dims(x, axis=axis)
+    return x
+
 def visualizeBboxes(im, boxes):
     """
     Parameters
@@ -250,8 +257,8 @@ def getCoordsFromPointMasks(masks, targ_width, targ_height):
     coords = []
     for coord_mask in masks:
         # normalize mask
-        width_factor = targ_width / len(coord_mask[0])
-        height_factor = targ_height / len(coord_mask)
+        width_factor = float(targ_width) / len(coord_mask[0])
+        height_factor = float(targ_height) / len(coord_mask)
         coord_mask /= np.sum(coord_mask)
         x_inds = np.arange(0, len(coord_mask[0]))
         y_inds = np.arange(0, len(coord_mask))
