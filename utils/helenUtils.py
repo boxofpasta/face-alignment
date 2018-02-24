@@ -105,6 +105,21 @@ class ImagesReader:
         return ims, names
 
 
+def reserializeFolderAsNpy(im_path, coords_path, im_extension, coords_extension, npy_path, ibug_version=False):
+    """
+    Goes through im_path along with coords_path and saves them as npy arrays in npy_path
+    """
+    im_reader = ImagesReader(im_path, im_extension, 2000)
+
+    # operating under the assumption that coords/annotations take up a negligible 
+    # amount of memory relative to the images.
+    while not im_reader.complete:
+        print("\nReading images...")
+        ims_list, names_list = im_reader.read()
+        ims = utils.getDictFromLists(names_list, ims_list)
+        coords = readCoordsHelen(coords_path, coords_extension, sample_names=names_list, ibug_version=ibug_version)
+        serializeData(ims, coords, npy_path, ibug_version=ibug_version)
+
 
 def processData(ims, coords, targ_im_len):
     """
@@ -172,8 +187,8 @@ def serializeData(all_ims, all_coords, npy_path, ibug_version=False):
 
 def normalizeCoords(coords, im_width, im_height):
     for coord in coords:
-        coord[1] /= (im_height - 1)
-        coord[0] /= (im_width - 1)
+        coord[0] /= (im_height - 1)
+        coord[1] /= (im_width - 1)
     return coords
 
 #def denormalizeCoords(coords, im_width, im_height):   
@@ -191,16 +206,16 @@ def resizePair(im, label, targ_width, targ_height):
 
 def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
-    lip_coords = getLipCoords(label)
+    #lip_coords = getLipCoords(label)
     bbox = utils.getBbox(label)
     #bbox = utils.getBbox(lip_coords)
 
     # randomly expand facebox
     #bbox = utils.getRandomlyExpandedBbox(bbox, 0.03, 0.35)
-    bbox = utils.getRandomlyExpandedBbox(bbox, 0.10, 1.0)
+    #bbox = utils.getRandomlyExpandedBbox(bbox, 0.10, 1.0)
     label[:,0] -= bbox[0]
     label[:,1] -= bbox[1]
-    im = getCropped(im, bbox)
+    im = utils.getCropped(im, bbox)
     return [im, label]
 
 def getLeyeCenter(coords):
@@ -215,13 +230,6 @@ def getEyeDistance(coords):
     leye_center = getLeyeCenter(coords)
     reye_center = getReyeCenter(coords)
     return np.linalg.norm(leye_center - reye_center)
-
-def getCropped(im, bbox):
-    l = int(max(0, bbox[1]))
-    r = int(min(len(im[0]), bbox[3]+1))
-    t = int(max(0, bbox[0]))
-    b = int(min(len(im), bbox[2]+1))
-    return im[t:b, l:r]
 
 def getOrdered(ims, labels):
     """
@@ -320,7 +328,7 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                         coords = []
                         for s in lines[i].split():
                             if utils.isNumber(s):
-                                coords.append(float(s))
+                                coords.append(float(s) - 1.0)
                         
                         if len(coords) == 2:
 
@@ -332,14 +340,14 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
                 if sample_names == None or key in allowed_samples:
                     cur_labels = []
                     for i in range(3, len(lines)-1):
-                        coords = [float(s) for s in lines[i].split()]
+                        coords = [float(s) - 1.0 for s in lines[i].split()]
 
                         # want y, x because tensorflow likes it this way
                         cur_labels.append(list(reversed(coords)))
                     labels[key] = cur_labels
     return labels
 
-def getLipCoords(coords, flip_x=False):
+def getLipCoords(coords, max_x, flip_x=False):
     """
     Only works for the ibug annotated version currently.
     Parameters
@@ -352,7 +360,7 @@ def getLipCoords(coords, flip_x=False):
     """
     if flip_x:
         c = np.copy(coords[48:60])
-        c[:,1] = 1.0 - c[:,1]
+        c[:,1] = float(max_x) - c[:,1]
         c[0], c[6] = c[6], c[0].copy()
         c[1], c[5] = c[5], c[1].copy()
         c[2], c[4] = c[4], c[2].copy()
@@ -427,20 +435,16 @@ def getLipLineMask(lip_coords, in_shape, out_shape):
     return img
 
 
-def trySerializedSample(npy_path, name, targ_im_len):
+def trySerializedSample(npy_path, name):
     im = np.load(npy_path + '/ims/' + name + '.npy')
+    label = np.load(npy_path + '/coords/' + name + '.npy')
+    utils.visualizeCoords(im, label)
+    """
     if targ_im_len == -1:
         factor = 1
     else:
         factor = targ_im_len-1
-    label = np.load(npy_path + '/coords/' + name + '.npy')
     label *= factor
-    """
-    mask = np.load(npy_path + '/masks/' + name + '.npy')
-    mask = (80 * mask).astype(np.uint8)
-    rem = 255 - im[:,:,1]
-    im[:,:,1] += np.minimum(rem, mask)
-    """
     reshaped_labels = np.reshape(label, (-1, 2))
     lip_coords = getLipCoords(reshaped_labels)
     shape = (targ_im_len, targ_im_len)
@@ -449,20 +453,7 @@ def trySerializedSample(npy_path, name, targ_im_len):
     rem = 255 - im[:,:,1]
     im[:,:,1] += np.minimum(rem, mask)
     utils.visualizeCoords(im, label)
-
-def visualizeMask(im, mask, targ_im_len=-1):
-    if targ_im_len != -1:
-        im_resize_method = cv2.INTER_CUBIC if targ_im_len > len(im) else cv2.INTER_AREA
-        mask_resize_method = cv2.INTER_CUBIC if targ_im_len > len(mask) else cv2.INTER_AREA 
-        im = cv2.resize(im, (targ_im_len, targ_im_len), interpolation=im_resize_method)
-        mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=mask_resize_method)
-
-    mask = mask.astype(np.uint8)
-    rem = 255 - im[:,:,1]
-    im[:,:,1] += np.minimum(rem, mask)
-    #plt.imshow(mask)
-    plt.imshow(im)
-    plt.show()
+    """
 
 def trySerializedFolder(npy_path, targ_im_len):
     with open(npy_path + '/names.json') as fp:

@@ -293,7 +293,7 @@ class ModelFactory:
             inputs=[img_input], 
             outputs=[pred]
         )
-        optimizer = optimizers.adam(lr=3E-2)
+        optimizer = optimizers.adam(lr=6E-2)
         model.compile(loss=[self.pointMaskSigmoidLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
         return model
 
@@ -693,7 +693,9 @@ class ModelFactory:
         """
         Sum of euclidean distances squared between the centers of preds and labels.
         """
-        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
+        #labels = tf.reshape(labels, (-1, self.mask_side_len, self.mask_side_len, 12))
+        #preds = tf.reshape(preds, (-1, self.mask_side_len, self.mask_side_len, 12))
+        preds = tf.sigmoid(preds)
         width = tf.shape(labels)[2]
         height = tf.shape(labels)[1]
         x_inds = tf.cast(tf.expand_dims(tf.range(0, width), 0), tf.float32)
@@ -712,10 +714,10 @@ class ModelFactory:
         y_label = tf.reduce_sum(y_inds * labels, axis=[2,3])
         x_pred = tf.reduce_sum(x_inds * preds, axis=[2,3])
         y_pred = tf.reduce_sum(y_inds * preds, axis=[2,3])
-    
-        x_diff = (x_label - x_pred) / tf.cast(width, tf.float32)
-        y_diff = (y_label - y_pred) / tf.cast(height, tf.float32)
-        return tf.reduce_sum(tf.square(x_diff) + tf.square(y_diff))
+
+        x_dist = tf.squared_difference(x_label, x_pred) / tf.cast(width * width, tf.float32)
+        y_dist = tf.squared_difference(y_label, y_pred) / tf.cast(height * height, tf.float32)
+        return tf.reduce_sum(x_dist + y_dist)
         
     def pointMaskDistanceLoss(self, labels, preds):
         """

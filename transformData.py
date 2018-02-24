@@ -1,10 +1,16 @@
+# takes only a small sample for testing purposes
+use_samples = True
+
 import os
 import sys
 import scipy.misc
 import numpy as np
 import matplotlib
 import cv2
-#matplotlib.use('Qt5Agg')
+
+if use_samples:
+    matplotlib.use('Qt5Agg')
+    
 import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
@@ -21,9 +27,6 @@ ibug_version = True
 # applies only if transform_train == True and ibug_version == False. For serializing just the helen_1 folder
 use_small = True
 
-# takes only a small sample for testing purposes
-use_samples = False
-targ_im_len = 224
 
 im_extension = '.jpg'
 coords_extension = '.pts' if ibug_version else '.txt'
@@ -32,21 +35,28 @@ if transform_test:
     if ibug_version:
         im_path = 'downloads/helen_ibug/testset'
         coords_path = im_path
-        npy_test_path = 'data/test_ibug'
+        npy_path = 'data/test_ibug'
     else:
         im_path = 'downloads/helen_test'
         coords_path = 'downloads/annotation'
-        npy_test_path = 'data/test'
+        npy_path = 'data/test'
     print "\nProcessing images in " + im_path + " and saving to " + npy_test_path + "..."
+    helenUtils.reserializeFolderAsNpy(im_path, coords_path, im_extension, coords_extension, npy_path, ibug_version=ibug_version)
+    
+    #coords = helenUtils.readCoordsHelen(coords_path, coords_extension, sample_names=[]], ibug_version=ibug_version)
+    #helenUtils.serializeData(ims, coords, npy_path, ibug_version=ibug_version)
+    
+    """
     test_props = helenUtils.DatasetProps(im_extension, coords_extension, im_path, coords_path)
     ims, coords = helenUtils.processData(test_props, targ_im_len, sample_names=None, ibug_version=ibug_version)
     helenUtils.serializeData(ims, coords, npy_test_path, ibug_version=ibug_version)
+    """
 
 if transform_train:
     if ibug_version:
         im_paths = ['downloads/helen_ibug/trainset']
         coords_path = im_paths[0]
-        npy_path = 'data/train_ibug_lip_zoomed'
+        npy_path = 'data/train_ibug'
     else:
         coords_path = 'downloads/annotation'
         if use_small:
@@ -71,9 +81,11 @@ if transform_train:
             print "\nReading images ..."
             ims = helenUtils.readImagesHelen(im_path, im_extension, sample_names=sample_names)
             coords = helenUtils.readCoordsHelen(coords_path, coords_extension, sample_names=sample_names, ibug_version=ibug_version)
-            helenUtils.processData(ims, coords, targ_im_len)
             helenUtils.serializeData(ims, coords, npy_path, ibug_version=ibug_version)
         else:
+            helenUtils.reserializeFolderAsNpy(im_path, coords_path, im_extension, coords_extension, npy_path)
+            
+            """
             im_reader = helenUtils.ImagesReader(im_path, im_extension, 2000)
 
             # operating under the assumption that coords/annotations take up a negligible 
@@ -83,15 +95,15 @@ if transform_train:
                 ims_list, names_list = im_reader.read()
                 ims = utils.getDictFromLists(names_list, ims_list)
                 coords = helenUtils.readCoordsHelen(coords_path, coords_extension, sample_names=names_list, ibug_version=ibug_version)
-                helenUtils.processData(ims, coords, targ_im_len)
                 helenUtils.serializeData(ims, coords, npy_path, ibug_version=ibug_version)
+            """
 
-                # test
-                #helenUtils.trySerializedFolder(npy_path, targ_im_len)
+            # test
+            #helenUtils.trySerializedFolder(npy_path, targ_im_len)
 
 # visualize the serialized samples
 if use_samples:
     for name in sample_names:
-        helenUtils.trySerializedSample(npy_path, name, targ_im_len)
+        helenUtils.trySerializedSample(npy_path, name)
 
 #helenUtils.save_data(train_props, 'data/train', 224, append_to_names=False)

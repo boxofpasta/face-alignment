@@ -8,6 +8,8 @@ import utils.generalUtils as utils
 import json 
 import time
 import cv2
+import scipy
+#from PIL import ImageEnhance
 
 """
 This file contains BatchGenerator (which returns unaltered helen labels as float array),
@@ -20,6 +22,7 @@ class BatchGenerator:
         Each image needs to be saved as a .npy file in path path/ims.
         Each coords needs to be saved as a .npy file in path path/coords.
         Coords/masks and images that correspond to each other must have the same name (excluding file extension).
+    Subclasses should override the getTrainingPair function.
     """
     def __init__(self, names, path, flip_x_augmentation=False, coords_sparsity=1):
         self.batch_size = 32
@@ -48,7 +51,7 @@ class BatchGenerator:
         if self.flip_x_augmentation:
             self.steps_per_epoch *= 2
 
-    def getPair(self, sample_name, flip_x=False):
+    def getTrainingPairFromName(self, sample_name, flip_x=False):
         """
         Parameters
         ----------
@@ -65,8 +68,7 @@ class BatchGenerator:
         im = np.load(self.ims_path + '/' + sample_name + '.npy')
         coords = np.load(self.coords_path + '/' + sample_name + '.npy')
         coords = self.preprocessCoords(coords)
-        labels = self.getLabels(coords, im, flip_x)  
-        inputs = self.getInputs(coords, im, flip_x)
+        inputs, labels = self.getTrainingPair(im, coords)
         return inputs, labels    
 
     def getAllData(self):
@@ -83,7 +85,10 @@ class BatchGenerator:
     def preprocessCoords(self, coords):
         return coords[0::self.coords_sparsity]
 
-    def getLabels(self, coords, im, flip_x=False):
+    def getTrainingPair(self, im, coords):
+        return im, coords
+
+    def getLabels(self, im, coords, flip_x=False):
         return [coords]
 
     """ 
@@ -96,7 +101,7 @@ class BatchGenerator:
     def getBatchFromNames(self, sample_names):
         X, Y = [], []
         for name in sample_names:
-            x, y = self.getPair(name)
+            x, y = self.getTrainingPairFromName(name)
             X.append(x)
             Y.append(y)
         return self.getBatchFromSamples(X, Y)
@@ -115,25 +120,21 @@ class BatchGenerator:
         return X, Y
 
     def generate(self):
-        augmented_train_names = self.all_names
-        flip_x_suffix = '_flip_x'
-        if self.flip_x_augmentation:
-            augmented_train_names = [name + flip_x_suffix for name in self.all_names] + self.all_names
-        
-        num_batches = len(augmented_train_names) / self.batch_size
+     
+        num_batches = len(self.all_names) / self.batch_size
         while(True):
 
             # epoch complete
-            rand_idx = np.arange(0, len(augmented_train_names))
+            rand_idx = np.arange(0, len(self.all_names))
             np.random.shuffle(rand_idx)
 
             for i in range(0, num_batches):
                 past = time.clock()
 
                 # get range of current batch
-                start = (i * self.batch_size) % len(augmented_train_names)
-                end = min(start + self.batch_size, len(augmented_train_names))
-                wrap = max(start + self.batch_size - len(augmented_train_names), 0)
+                start = (i * self.batch_size) % len(self.all_names)
+                end = min(start + self.batch_size, len(self.all_names))
+                wrap = max(start + self.batch_size - len(self.all_names), 0)
                 indices = np.concatenate((rand_idx[start : end], (rand_idx[0 : wrap])), axis=0)
                 
                 # generate batch
@@ -141,14 +142,10 @@ class BatchGenerator:
                 #    X = [self.all_ims[k] for k in indices]
                 #    Y = [self.all_labels[k] for k in indices]
                 #else:
-                cur_names = [augmented_train_names[k] for k in indices]
+                cur_names = [self.all_names[k] for k in indices]
                 X = []
                 Y = []
                 for name in cur_names:
-                    flip_x = False
-                    if name.endswith(flip_x_suffix):
-                        name = name[:-len(flip_x_suffix)]
-                        flip_x = True
 
                     """im = np.load(self.ims_path + '/' + name + self.im_extension)
                     coords = np.load(self.coords_path + '/' + name + self.label_extension)
@@ -156,7 +153,7 @@ class BatchGenerator:
                     labels = self.getLabels(coords, im, flip_x)
                     inputs = self.getInputs(coords, im, flip_x)
                     """
-                    inputs, labels = self.getPair(name, flip_x)
+                    inputs, labels = self.getTrainingPairFromName(name)
                     Y.append(labels)
                     X.append(inputs)
 
@@ -222,6 +219,7 @@ class MaskAndBboxBatchGenerator(BatchGenerator):
         return [0, 0]
 
 
+
 class MaskBatchGenerator(BatchGenerator):
 
     def __init__(self, names, path, mask_side_len, **kwargs):
@@ -246,7 +244,7 @@ class MaskBatchGenerator(BatchGenerator):
         return [0]
 
 
-class PointMaskBatchGenerator(BatchGenerator):
+class PointMaskStrictBatchGenerator(BatchGenerator):
 
     def __init__(self, names, path, mask_side_len, **kwargs):
         BatchGenerator.__init__(self, names, path, **kwargs)
@@ -294,21 +292,69 @@ class PointMaskBatchGenerator(BatchGenerator):
         return [0, 0, 0]
 
 
-class PointMaskVanillaBatchGenerator(BatchGenerator):
+class PointMaskBatchGenerator(BatchGenerator):
 
     def __init__(self, names, path, mask_side_len, **kwargs):
         BatchGenerator.__init__(self, names, path, **kwargs)
         self.flip_x_supported = True
+        self.targ_im_len = 224
         self.mask_side_len = mask_side_len
-        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.02)
+        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.01)
 
-    def getInputs(self, coords, im, flip_x=False):
+    def getTrainingPair(self, im, coords):
+
+        # random rotation
+        width = len(im[0])
+        height = len(im)
+        center = [(height-1)/2.0, (width-1)/2.0]
+        max_rot_deg = 22
+        rot_deg = max_rot_deg * np.random.rand(1)
+        rot_rad = np.deg2rad(rot_deg)
+        im = scipy.misc.imrotate(im, rot_deg)
+        coords = utils.getRotatedPoints(coords, center, rot_rad)
+
+        # random scale and shift
+        bbox = utils.getBbox(coords)
+        square = utils.getSquareFromRect(bbox)
+        rect = utils.getRandomlyExpandedBbox(square, 0.06, 0.9)
+        max_shift = 0.3 * (square[2] - square[0])
+        shifts = max_shift * np.random.rand(2)
+        rect = np.array(utils.getShiftedBbox(rect, shifts)).astype(int)
+
+        # make sure that rect does not go beyond image borders
+        rect = utils.getClippedBbox(im, rect)
+
+        # crop
+        coords[:,0] -= rect[0]
+        coords[:,1] -= rect[1]
+        im = utils.getCropped(im, rect)
+
+        # just the lip coords for now
+        # flip
+        flipped = bool(np.random.randint(0, 2))
+        lip_coords = helenUtils.getLipCoords(coords, len(im[0]), flip_x=flipped)
+        im = np.fliplr(im) if flipped else im
+
+        # random color augmentation (?)
+
+        # normalize the coords and image
+        im = cv2.resize(im, (self.targ_im_len, self.targ_im_len))
+        lip_coords = helenUtils.normalizeCoords(lip_coords, rect[3] - rect[1], rect[2] - rect[0])
+    
+        # mask from coords
+        masks = utils.coordsToHeatmapsFast(lip_coords, self.pdfs)
+        masks = np.moveaxis(masks, 0, -1)
+        masks /= np.max(masks, axis=(0,1))
+        l = self.mask_side_len
+        masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
+        return [im], [masks]
+
+    """
+    def getInputs(self, coords, im):
         labels = self.getLabels(coords, im, flip_x)
-        if flip_x:
-            im = np.fliplr(im)
         return [im]
 
-    def getLabels(self, coords, im, flip_x):
+    def getLabels(self, coords, im):
         coords = np.reshape(coords, (self.num_coords, 2))
         lip_coords = helenUtils.getLipCoords(coords, flip_x)
         masks = utils.coordsToHeatmapsFast(lip_coords, self.pdfs)
@@ -317,6 +363,7 @@ class PointMaskVanillaBatchGenerator(BatchGenerator):
         l = self.mask_side_len
         #masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
         return [masks]
+    """
 
 class LineMaskBatchGenerator(BatchGenerator):
 

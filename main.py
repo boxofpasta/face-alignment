@@ -81,9 +81,17 @@ if __name__ == '__main__':
     #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
     #K.set_session(sess)
     notify_training_complete = True
-    samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
-    
     factory = ModelFactory.ModelFactory()
+    
+    #samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
+    samples = ['100466187_1', '11564757_2', '1240746154_1', '1165647416_1', '1691766_1']
+
+    batch_generator = BatchGenerator.PointMaskBatchGenerator(samples, 'data/train_ibug', factory.mask_side_len)
+    X, Y = batch_generator.getBatchFromNames(samples)
+    ims, masks = X[0], Y[0]
+    for i in range(len(ims)):
+        utils.visualizeCoordMasks(ims[i], masks[i])
+
     #model = factory.getSaved('models/tmp/test.h5')
     #model = factory.getSaved('models/lip_masker_100.h5')
     #model = factory.getLipMasker(alpha_1=1, alpha_2=1)
@@ -102,8 +110,8 @@ if __name__ == '__main__':
     model_path = model_folder + '/model.h5'
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerVanilla()
-    #model = factory.getPointMaskerDilated()
-    model = factory.getSaved(model_path)
+    model = factory.getPointMaskerDilated()
+    #model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
     model.summary()
@@ -125,9 +133,8 @@ if __name__ == '__main__':
     split_val = int(len(all_names) * val_split_ratio)
     all_val_names = all_names[:split_val]
     all_train_names = all_names[split_val:]
-    train_batch_generator = BatchGenerator.PointMaskVanillaBatchGenerator(all_train_names, path, factory.mask_side_len, 
-                                                                          flip_x_augmentation=True)
-    val_batch_generator = BatchGenerator.PointMaskVanillaBatchGenerator(all_val_names, path, factory.mask_side_len)
+    train_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_train_names, path, factory.mask_side_len)
+    val_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_val_names, path, factory.mask_side_len)
     #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
 
     """

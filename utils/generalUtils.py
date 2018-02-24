@@ -117,6 +117,42 @@ def coordsToHeatmaps(coords, elms_per_side, stddev=0.01):
         heatmaps.append(heatmap)
     return heatmaps
 
+def visualizeMask(im, mask, targ_im_len=-1):
+    """
+    mask values should all be between [0,1]
+    """
+    if targ_im_len != -1:
+        im_resize_method = cv2.INTER_CUBIC if targ_im_len > len(im) else cv2.INTER_AREA
+        mask_resize_method = cv2.INTER_CUBIC if targ_im_len > len(mask) else cv2.INTER_AREA 
+        im = cv2.resize(im, (targ_im_len, targ_im_len), interpolation=im_resize_method)
+        mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=mask_resize_method)
+
+    mask = 80.0 * np.minimum(mask, 1)
+    mask = mask.astype(np.uint8)
+    rem = 255 - im[:,:,1]
+    im[:,:,1] += np.minimum(rem, mask)
+    #plt.imshow(mask)
+    plt.imshow(im)
+    plt.show()
+
+
+def visualizeCoordMasks(im, masks):
+    """
+    Parameters
+    ----------
+    im : 
+        The 2D array image.
+    masks : 
+        Has to be of shape (mask_side_len, mask_side_len, num_coords)
+    """
+    
+    summed = np.sum(masks, axis=-1)
+    summed = cv2.resize(summed, (len(im), len(im[0])), interpolation=cv2.INTER_LINEAR)
+    plt.imshow(summed)
+    plt.show()
+    visualizeMask(im, summed)
+
+
 def visualizeCoords(im, coords, special_indices=[]):
     """
     Parameters
@@ -171,6 +207,57 @@ def getMask(polygons, src_dims, dst_dims):
 def printTensorShape(tensor):
     print tensor.get_shape().as_list()
 
+def getRotationMatrix(angle):
+    """
+    angle should be in radians, and specifies ccw rotation.
+    """
+    row1 = [ np.cos(angle), -np.sin(angle) ] 
+    row2 = [ np.sin(angle), np.cos(angle) ]
+    return np.squeeze(np.array([row1, row2]))
+
+def getRotatedPoints(points, center, angle):
+    """
+    For 2D points only.
+    Angle should be in radians, and specifies ccw rotation.
+
+    Parameters
+    ----------
+    points:         
+        Points should be of shape (num_points, 2)
+    center: 
+        Of shape (2,)
+    angle: 
+        Angle should be in radians, and specifies ccw rotation.
+    """
+    rot = getRotationMatrix(angle)
+    vecs = points - center
+    rot_vecs = np.dot(rot, np.transpose(vecs))
+    rot_vecs = np.transpose(rot_vecs)
+    return np.array(center) + rot_vecs
+
+def getSquareFromRect(_rect):
+    """
+    Parameters
+    ----------
+    _rect: 
+        Array with values ordered as : [top, left, bottom, right]. Return value has the same format.
+    Returns
+    -------
+    Rect will be padded on its smaller dimension so that it's a square.
+    """
+    rect = list(_rect)
+    width = rect[3] - rect[1]
+    height = rect[2] - rect[0]
+    diff = abs(width - height)
+    pad = diff / 2.0
+    if width > height:
+        rect[0] -= pad
+        rect[2] += pad
+    else:
+        rect[1] -= pad
+        rect[3] += pad
+    return rect
+
 def getBbox(coords):
     """
     Returns
@@ -183,6 +270,22 @@ def getBbox(coords):
     bbox = np.array([np.min(y_vals), np.min(x_vals), np.max(y_vals), np.max(x_vals)])
     return bbox
 
+def getShiftedBbox(_bbox, shifts):
+    """
+    Parameters
+    ----------
+    bbox: 
+        Array with values ordered as such: [top, left, bottom, right] 
+    shifts: 
+        [y_shift, x_shift]
+    """
+    bbox = list(_bbox)
+    bbox[0] += shifts[0]
+    bbox[2] += shifts[0]
+    bbox[1] += shifts[1]
+    bbox[3] += shifts[1]
+    return bbox
+
 def getRandomlyExpandedBbox(bbox, ratio_low, ratio_high):
     """
     Internally uses getExpandedBbox after randomly sampling for a ratio (from a uniform distribution),
@@ -190,12 +293,23 @@ def getRandomlyExpandedBbox(bbox, ratio_low, ratio_high):
     
     Parameters
     ----------
-    ratio_low: 
+    ratio_low:  
         Lower bound of the uniform distribution that we are sampling from.
     """
     ratio_x, ratio_y = np.random.uniform(ratio_low, ratio_high, 2)
     return getExpandedBbox(bbox, ratio_x, ratio_y)
-    
+
+def getClippedBbox(im, bbox):
+    l = int(max(0, bbox[1]))
+    r = int(min(len(im[0]), bbox[3]+1))
+    t = int(max(0, bbox[0]))
+    b = int(min(len(im), bbox[2]+1))
+    return [t, l, b, r]
+
+def getCropped(im, bbox):
+    t, l, b, r = getClippedBbox(im, bbox)
+    return im[t:b, l:r]
+
 
 def getExpandedBbox(bbox, ratio_x, ratio_y):
     """
