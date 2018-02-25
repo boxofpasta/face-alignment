@@ -56,7 +56,8 @@ class ModelFactory:
             'PerturbBboxes' : layerUtils.PerturbBboxes,
             'PointMaskSoftmaxLossLayer': layerUtils.PointMaskSoftmaxLossLayer,
             'StopGradientLayer': layerUtils.StopGradientLayer,
-            'pointMaskDistanceLoss': self.pointMaskDistanceLoss
+            'pointMaskDistanceLoss': self.pointMaskDistanceLoss,
+            'pointMaskDistance': self.pointMaskDistance
         }
 
     def getSaved(self, path, frozen=False):

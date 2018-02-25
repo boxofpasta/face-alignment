@@ -105,7 +105,7 @@ class ImagesReader:
         return ims, names
 
 
-def reserializeFolderAsNpy(im_path, coords_path, im_extension, coords_extension, npy_path, ibug_version=False):
+def reserializeFolderAsNpy(im_path, coords_path, im_extension, coords_extension, npy_path, targ_im_width, ibug_version=False):
     """
     Goes through im_path along with coords_path and saves them as npy arrays in npy_path
     """
@@ -118,10 +118,11 @@ def reserializeFolderAsNpy(im_path, coords_path, im_extension, coords_extension,
         ims_list, names_list = im_reader.read()
         ims = utils.getDictFromLists(names_list, ims_list)
         coords = readCoordsHelen(coords_path, coords_extension, sample_names=names_list, ibug_version=ibug_version)
+        ims, coords = processData(ims, coords, targ_im_width)
         serializeData(ims, coords, npy_path, ibug_version=ibug_version)
 
 
-def processData(ims, coords, targ_im_len):
+def processData(ims, coords, targ_im_width):
     """
     Parameters
     ----------
@@ -133,14 +134,16 @@ def processData(ims, coords, targ_im_len):
     #ims = readImagesHelen(props.im_path, props.im_extension, sample_names=sample_names)
     #coords = readCoordsHelen(props.coords_path, props.coords_extension, sample_names=sample_names, ibug_version=ibug_version)
 
-    if targ_im_len != -1:
+    if targ_im_width != -1:
         print('\n\nResizing samples ...')
         iter = 0
         for name in ims:
-            if targ_im_len != -1:
+            if targ_im_width != -1:
                 im, single_coords = cropPair(ims[name], coords[name])
-                im, single_coords = resizePair(im, single_coords, targ_im_len, targ_im_len)
-                coords[name] = normalizeCoords(single_coords, targ_im_len, targ_im_len)
+                h_w_ratio = float(len(im)) / len(im[0])
+                im, single_coords = resizePair(im, single_coords, targ_im_width, targ_im_width * h_w_ratio)
+                coords[name] = single_coords
+                #coords[name] = normalizeCoords(single_coords, targ_im_width, targ_im_width * h_w_ratio)
                 ims[name] = im
             utils.informProgress(iter, len(ims))
             iter += 1
@@ -198,16 +201,21 @@ def resizePair(im, label, targ_width, targ_height):
     cur_width = len(im[0])
     scale_x = float(targ_width) / cur_width
     scale_y = float(targ_height) / cur_height
-    for coords in label:
+    label[:,0] *= scale_y
+    label[:,1] *= scale_x
+    """for coords in label:
         coords[0] = coords[0] * scale_y
         coords[1] = coords[1] * scale_x
-    resized = cv2.resize(im, (targ_height, targ_width), interpolation=cv2.INTER_AREA)
+    """
+    resized = cv2.resize(im, (int(targ_width), int(targ_height)), interpolation=cv2.INTER_AREA)
     return [resized, label]
 
 def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
     #lip_coords = getLipCoords(label)
     bbox = utils.getBbox(label)
+    bbox = utils.getExpandedBbox(bbox, 1.0, 1.0)
+    bbox = utils.getClippedBbox(im, bbox)
     #bbox = utils.getBbox(lip_coords)
 
     # randomly expand facebox
@@ -227,6 +235,7 @@ def getReyeCenter(coords):
     return np.array([np.mean(reye_coords[:,0]), np.mean(reye_coords[:,1])])
 
 def getEyeDistance(coords):
+    print(np.shape(coords))
     leye_center = getLeyeCenter(coords)
     reye_center = getReyeCenter(coords)
     return np.linalg.norm(leye_center - reye_center)

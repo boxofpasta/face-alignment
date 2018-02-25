@@ -148,8 +148,6 @@ def visualizeCoordMasks(im, masks):
     
     summed = np.sum(masks, axis=-1)
     summed = cv2.resize(summed, (len(im), len(im[0])), interpolation=cv2.INTER_LINEAR)
-    plt.imshow(summed)
-    plt.show()
     visualizeMask(im, summed)
 
 
@@ -316,7 +314,7 @@ def getExpandedBbox(bbox, ratio_x, ratio_y):
     Parameters
     ----------
     bbox: 
-        Order should be: left, top, right, bottom. Right > left, bottom > top.
+        Order should be: top, left, bottom, right. Right > left, bottom > top.
     ratio_x: 
         E.g value of 1.0 means 100% of max(width, height) added as padding.
     """

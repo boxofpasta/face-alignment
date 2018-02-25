@@ -83,14 +83,17 @@ if __name__ == '__main__':
     notify_training_complete = True
     factory = ModelFactory.ModelFactory()
     
-    #samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
-    samples = ['100466187_1', '11564757_2', '1240746154_1', '1165647416_1', '1691766_1']
+    samples = ['100466187_1', '13602254_1', '2908549_1', '100032540_1', '1691766_1', '11564757_2', '110886318_1']
+    #samples = ['100466187_1', '11564757_2', '1240746154_1', '1165647416_1', '1691766_1']
 
     batch_generator = BatchGenerator.PointMaskBatchGenerator(samples, 'data/train_ibug', factory.mask_side_len)
-    X, Y = batch_generator.getBatchFromNames(samples)
+    
+    """
+    X, Y = batch_generator.getBatchFromNames(samples, augment=True)
     ims, masks = X[0], Y[0]
     for i in range(len(ims)):
         utils.visualizeCoordMasks(ims[i], masks[i])
+    """
 
     #model = factory.getSaved('models/tmp/test.h5')
     #model = factory.getSaved('models/lip_masker_100.h5')
@@ -105,16 +108,16 @@ if __name__ == '__main__':
     #model = factory.getLipMasker()
     #model_path = 'models/tmp/point_masker_small.h5'
     #model_path = 'models/tmp/point_masker_vanilla_no_skip.h5'
-    model_name = 'point_masker_dilated'
+    model_name = 'point_masker_dilated_std002'
     model_folder = 'models/' + model_name
     model_path = model_folder + '/model.h5'
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerVanilla()
-    model = factory.getPointMaskerDilated()
-    #model = factory.getSaved(model_path)
+    #model = factory.getPointMaskerDilated()
+    model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
-    model.summary()
+    #model.summary()
     #model = factory.getBboxRegressor()
     #model = factory.getFullyConnected(alpha=0.5)
     #model = factory.getBboxRegressor()
@@ -125,16 +128,22 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/lip_masker_050.h5')
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     #train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len, val_split_perc=0.2)
-    path = 'data/train_ibug'
-    with open(path + '/names.json') as fp:
-        all_names = json.load(fp)
-
+    train_path = 'data/train_ibug'
+    val_path = 'data/test_ibug'
+    with open(train_path + '/names.json') as fp:
+        all_train_names = json.load(fp)
+    with open(val_path + '/names.json') as fp:
+        all_val_names = json.load(fp)
+    
+    """
     val_split_ratio = 0.2
     split_val = int(len(all_names) * val_split_ratio)
     all_val_names = all_names[:split_val]
     all_train_names = all_names[split_val:]
-    train_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_train_names, path, factory.mask_side_len)
-    val_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_val_names, path, factory.mask_side_len)
+    """
+
+    train_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_train_names, train_path, factory.mask_side_len)
+    val_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_val_names, val_path, factory.mask_side_len, augment_on_generate=False)
     #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
 
     """
@@ -171,7 +180,7 @@ if __name__ == '__main__':
     #batch_generator = BatchGenerator.HeatmapBatchGenerator('data/train', factory.heatmap_side_len)
     
     if not train:
-        val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, path)
+        val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, val_path)
         print modelTests.getNormalizedDistanceError(model, val_batch_generator)
         #modelTests.videoTest(model)
         #modelTests.tryPointMaskerDilatedOnSamples(model)

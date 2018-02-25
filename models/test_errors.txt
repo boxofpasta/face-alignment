@@ -78,3 +78,12 @@ for 14x14 resolution, lowest resolution loss:
 
 # without the final 16-dilated layer and 1 extra conv layer at 112 resolution
 (150 epochs? @ 1E-2) : loss: 5828.1249 - f0_loss: 5828.1249 - val_loss: 7757.0386 - val_f0_loss: 7757.0386
+
+# week of 02/24
+# dilated convolutions (same as above), but with std=0.01 instead of 0.02 for point masks
+(120 epochs @ 6E-2) :  22s 363ms/step - loss: 2126.1918 - pointMaskDistance: 0.1416 - val_loss: 3091.1788 - val_pointMaskDistance: 0.4272
+
+# std=0.02
+(165 epochs @ 6E-2) : loss: 5997.1793 - pointMaskDistance: 0.1183 - val_loss: 6295.4792 - val_pointMaskDistance: 0.1185
+
+

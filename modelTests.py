@@ -88,15 +88,19 @@ def getNormalizedDistanceError(model, batch_generator):
         Should be class PointsBatchGenerator.
     """
     X, Y = batch_generator.getAllData()
-    X, Y = X[0], Y[0]
+    ims, labels = X[0], Y[0]
     overall_avg = 0.0
 
-    for i in range(len(X)):
-        im = X[i]
-        leye_coords = helenUtils.getLeyeCenter(Y[i])
-        reye_coords = helenUtils.getReyeCenter(Y[i])
-        eye_dist = helenUtils.getEyeDistance(Y[i])
-        lip_labels = helenUtils.getLipCoords(Y[i])
+    #for i in range(len(ims)):
+    #    utils.visualizeCoords(ims[i], labels[i])
+
+    for i in range(len(ims)):
+        im = ims[i]
+        labels[i] = helenUtils.normalizeCoords(labels[i], len(im[0]), len(im))
+        leye_coord = helenUtils.getLeyeCenter(labels[i])
+        reye_coord = helenUtils.getReyeCenter(labels[i])
+        eye_dist = helenUtils.getEyeDistance(labels[i])
+        lip_labels = helenUtils.getLipCoords(labels[i], 1.0)
         lip_preds = np.array(getCoordsFromImage(model, im))
         lip_preds[:,0] /= float(len(im))
         lip_preds[:,1] /= float(len(im[0]))
@@ -108,8 +112,16 @@ def getNormalizedDistanceError(model, batch_generator):
         cur_avg /= len(lip_preds)
         print 'eye to eye distance: ' + str(eye_dist)
         print 'avg error across all points: ' + str(cur_avg)
-        all_coords = np.concatenate([len(im) * np.array(lip_preds), len(im) * np.array(lip_labels) - 1], axis=0)
-        all_coords = np.concatenate([all_coords, [len(im) * leye_coords], [len(im) * reye_coords]], axis=0)
+
+        # expand to image dimensions to visualize
+        factors = np.expand_dims([len(im), len(im[0])], axis=0)
+        lip_preds *= factors
+        lip_labels *= factors
+        leye_coord *= np.squeeze(factors)
+        reye_coord *= np.squeeze(factors)
+        
+        all_coords = np.concatenate([lip_preds, lip_labels], axis=0)
+        all_coords = np.concatenate([all_coords, [leye_coord], [reye_coord]], axis=0)
         pred_indices = np.arange(0, len(all_coords) / 2)
         utils.visualizeCoords(im, all_coords, pred_indices)
         overall_avg += cur_avg
@@ -119,9 +131,10 @@ def getNormalizedDistanceError(model, batch_generator):
 
 
 def getCoordsFromImage(model, im):
+    orig_width = len(im[0])
+    orig_height = len(im)
     im = im[:,:,0:3]
     im = cv2.resize(im, (224, 224))
-    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
     X = [np.array([im])]
 
     #_1, _2, _3, _4, low_res, high_res = model.predict(feed_inputs, batch_size=32)
@@ -136,7 +149,7 @@ def getCoordsFromImage(model, im):
     preds = np.moveaxis(preds, -1, 0)
     preds = [ normalizeMask(pred) for pred in preds]
     
-    coords = utils.getCoordsFromPointMasks(preds, len(im[0]), len(im))
+    coords = utils.getCoordsFromPointMasks(preds, orig_width, orig_height)
     return coords
 
 def tryPointMaskerDilatedOnSamples(model):
@@ -146,8 +159,10 @@ def tryPointMaskerDilatedOnSamples(model):
             im = cv2.imread('downloads/samples/' + str(i) + '.png')
         else:
             im = cv2.imread('downloads/samples/' + str(i) + '.jpg')
+        
+        im = cv2.resize(im, (224, 224))
         coords = getCoordsFromImage(model, im)
-        utils.visualizeCoords(im, coords)
+        utils.visualizeCoords(im, coords, special_indices=np.arange(0, len(coords)))
 
 def tryPointMasker(model, batch_generator, sample_names=None):
     #if sample_names == None:
