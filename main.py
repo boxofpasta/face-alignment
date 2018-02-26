@@ -95,16 +95,18 @@ if __name__ == '__main__':
         utils.visualizeCoordMasks(ims[i], masks[i])
     """
     #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
-    model_name = 'point_masker_dilated_v2_std002'
+    #model_name = 'point_masker_dilated_v2_std002'
+    model_name = 'point_masker_cascaded'
     model_folder = 'models/' + model_name
     model_path = model_folder + '/model.h5'
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerVanilla()
     #model = factory.getPointMaskerDilated()
+    #model = factory.getPointMaskerCascaded()
     model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
-    #model.summary()
+    model.summary()
 
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     #train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len, val_split_perc=0.2)
@@ -170,9 +172,9 @@ if __name__ == '__main__':
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        total_epochs = 160
+        total_epochs = 30
         epochs_before_saving = 30
-        prev_epochs = 0
+        prev_epochs = 120
         cur_epoch = 0
         while cur_epoch < total_epochs:
             cur_num_epochs = min(total_epochs - cur_epoch, epochs_before_saving)

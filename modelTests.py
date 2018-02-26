@@ -6,7 +6,9 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import cv2
-import dlib
+#import dlib
+import os
+import sys
 
 def normalizeMask(mask):
     mask = np.maximum(mask - np.mean(mask), 0)
@@ -123,9 +125,9 @@ def testNormalizedDistanceError(model, batch_generator):
         all_coords = np.concatenate([lip_preds, lip_labels], axis=0)
         all_coords = np.concatenate([all_coords, [leye_coord], [reye_coord]], axis=0)
         pred_indices = np.arange(0, len(all_coords) / 2)
-        #utils.visualizeCoords(im, all_coords, pred_indices)
-        #print 'eye to eye distance: ' + str(eye_dist)
-        #print 'avg error across all points: ' + str(cur_avg)
+        utils.visualizeCoords(im, all_coords, pred_indices)
+        print 'eye to eye distance: ' + str(eye_dist)
+        print 'avg error across all points: ' + str(cur_avg)
         overall_avg += cur_avg
         all_avgs.append(cur_avg)
         utils.informProgress(i, len(ims))
@@ -160,17 +162,14 @@ def getCoordsFromImage(model, im):
     return coords
 
 def tryPointMaskerDilatedOnSamples(model):
-    png_ims = set([0, 2, 4, 8, 9])
-    for i in range(0, 10):
-        if i in png_ims:
-            im = cv2.imread('downloads/samples/' + str(i) + '.png')
-        else:
-            im = cv2.imread('downloads/samples/' + str(i) + '.jpg')
-        
-        im = cv2.resize(im, (224, 224))
-        im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-        coords = getCoordsFromImage(model, im)
-        utils.visualizeCoords(im, coords, special_indices=np.arange(0, len(coords)))
+    folder = 'downloads/samples/'
+    for fname in os.listdir(folder):
+        if fname.endswith(('png', 'jpg')):
+            im = cv2.imread(folder + fname)
+            im = cv2.resize(im, (224, 224))
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            coords = getCoordsFromImage(model, im)
+            utils.visualizeCoords(im, coords, special_indices=np.arange(0, len(coords)))
 
 def tryPointMasker(model, batch_generator, sample_names=None):
     #if sample_names == None:

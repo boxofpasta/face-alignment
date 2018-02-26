@@ -95,3 +95,5 @@ for 14x14 resolution, lowest resolution loss:
 # with odd dilation rates
 (150 epochs @ 6E-2) : loss: 6063.8427 - pointMaskDistance: 0.1019 - val_loss: 6061.2618 - val_pointMaskDistance: 0.1022
 
+# the 'cascade' model that I bullshitted
+(150 epochs @ 6E-2) : loss: 5651.6807 - pointMaskDistance: 0.0552 - val_loss: 5734.3161 - val_pointMaskDistance: 0.0663

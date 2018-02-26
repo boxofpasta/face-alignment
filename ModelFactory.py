@@ -255,6 +255,51 @@ class ModelFactory:
         model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
         return model
 
+    def getPointMaskerCascaded(self):
+        im_shape = (self.im_width, self.im_height, 3)
+        num_coords = 12
+        img_input = Input(shape=im_shape)
+        label_masks = Input(shape=(self.mask_side_len, self.mask_side_len, num_coords))
+        
+        x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
+        # 112x112
+
+        x = layerUtils.depthwiseConvBlock(x, 32, 64, down_sample=True)
+        # 56x56
+
+        x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        z = x
+        z = layerUtils.depthwiseConvBlock(x, 64, num_coords)
+
+        x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
+        # 28x28
+
+        #x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
+        # 14x14
+
+        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
+        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
+        x = layerUtils.depthwiseConvBlock(x, 256, 256)
+        x = layerUtils.depthwiseConvBlock(x, 256, num_coords, final_activation='linear')
+        
+        method = tf.image.ResizeMethod.BILINEAR
+        x = layerUtils.Resize(56, method)(x)
+        x = Multiply()([x, z])
+        # 56x56
+
+        x = layerUtils.depthwiseConvBlock(x, num_coords, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
+        pred = x
+        
+        model = Model(
+            inputs=[img_input], 
+            outputs=[pred]
+        )
+        optimizer = optimizers.adam(lr=6E-2)
+        model.compile(loss=[self.pointMaskSigmoidLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
+        return model
+
     def getPointMaskerDilated(self):
         im_shape = (self.im_width, self.im_height, 3)
 
