@@ -31,6 +31,7 @@ class BatchGenerator:
 
     """
     def __init__(self, names, path, augment_on_generate=True, coords_sparsity=1):
+        self.targ_im_len = 224
         self.batch_size = 32
         self.all_names = []
         self.augment_on_generate = augment_on_generate
@@ -86,6 +87,22 @@ class BatchGenerator:
     def getTrainingPair(self, im, coords, augment=False):
         if augment:
             raise ValueError('This class does not support training time augmentation')
+        
+        bbox = utils.getBbox(coords)
+        rect = utils.getSquareFromRect(bbox)
+        
+        # make sure that rect does not go beyond image borders
+        rect = utils.getClippedBbox(im, rect)
+
+        # crop
+        coords[:,0] -= rect[0]
+        coords[:,1] -= rect[1]
+        im = utils.getCropped(im, rect)
+        #utils.visualizeCoords(im, coords)
+        coords = helenUtils.normalizeCoords(coords, rect[3] - rect[1], rect[2] - rect[0])
+
+        im = cv2.resize(im, (self.targ_im_len, self.targ_im_len))
+        #utils.visualizeCoords(im, 224 * coords)
         return [im], [coords]
 
     def getLabels(self, im, coords, flip_x=False):
@@ -296,7 +313,6 @@ class PointMaskBatchGenerator(BatchGenerator):
 
     def __init__(self, names, path, mask_side_len, **kwargs):
         BatchGenerator.__init__(self, names, path, **kwargs)
-        self.targ_im_len = 224
         self.mask_side_len = mask_side_len
         self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.02)
 

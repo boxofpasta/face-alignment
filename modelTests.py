@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import cv2
-#import dlib
+import dlib
 
 def normalizeMask(mask):
     mask = np.maximum(mask - np.mean(mask), 0)
@@ -80,7 +80,7 @@ def tryPointMaskerVanilla(model, batch_generator, sample_names=None):
         plt.show()
         """
 
-def getNormalizedDistanceError(model, batch_generator):
+def testNormalizedDistanceError(model, batch_generator):
     """
     Parameters
     ----------
@@ -90,13 +90,15 @@ def getNormalizedDistanceError(model, batch_generator):
     X, Y = batch_generator.getAllData()
     ims, labels = X[0], Y[0]
     overall_avg = 0.0
+    all_avgs = []
 
     #for i in range(len(ims)):
-    #    utils.visualizeCoords(ims[i], labels[i])
+    #    utils.visualizeCoords(ims[i], 224 * labels[i])
 
+    print 'Processing test set of images: '
     for i in range(len(ims)):
         im = ims[i]
-        labels[i] = helenUtils.normalizeCoords(labels[i], len(im[0]), len(im))
+        #labels[i] = helenUtils.normalizeCoords(labels[i], len(im[0]), len(im))
         leye_coord = helenUtils.getLeyeCenter(labels[i])
         reye_coord = helenUtils.getReyeCenter(labels[i])
         eye_dist = helenUtils.getEyeDistance(labels[i])
@@ -106,12 +108,10 @@ def getNormalizedDistanceError(model, batch_generator):
         lip_preds[:,1] /= float(len(im[0]))
         cur_avg = 0.0
         for j in range(0, len(lip_preds)):
-            dist = np.linalg.norm(lip_preds[j] - (lip_labels[j] - 1.0 / len(im)))
+            dist = np.linalg.norm(lip_preds[j] - lip_labels[j])
             normalized = dist / eye_dist
             cur_avg += normalized
         cur_avg /= len(lip_preds)
-        print 'eye to eye distance: ' + str(eye_dist)
-        print 'avg error across all points: ' + str(cur_avg)
 
         # expand to image dimensions to visualize
         factors = np.expand_dims([len(im), len(im[0])], axis=0)
@@ -123,11 +123,18 @@ def getNormalizedDistanceError(model, batch_generator):
         all_coords = np.concatenate([lip_preds, lip_labels], axis=0)
         all_coords = np.concatenate([all_coords, [leye_coord], [reye_coord]], axis=0)
         pred_indices = np.arange(0, len(all_coords) / 2)
-        utils.visualizeCoords(im, all_coords, pred_indices)
+        #utils.visualizeCoords(im, all_coords, pred_indices)
+        #print 'eye to eye distance: ' + str(eye_dist)
+        #print 'avg error across all points: ' + str(cur_avg)
         overall_avg += cur_avg
+        all_avgs.append(cur_avg)
+        utils.informProgress(i, len(ims))
     
-    overall_avg /= len(X)
-    return overall_avg
+    all_avgs = sorted(all_avgs)
+    overall_avg /= len(ims)
+    
+    print '\nmedian normalized landmark error: ' + str(all_avgs[len(all_avgs) / 2])
+    print 'average normalized landmark error: ' + str(overall_avg)
 
 
 def getCoordsFromImage(model, im):
@@ -140,7 +147,7 @@ def getCoordsFromImage(model, im):
     #_1, _2, _3, _4, low_res, high_res = model.predict(feed_inputs, batch_size=32)
     before = time.time()
     outputs = model.predict_on_batch(X)
-    print 'inference time: ' + str(time.time() - before) + ' seconds'
+    #print 'inference time: ' + str(time.time() - before) + ' seconds'
     
     #labels = inputs[1]
     #labels = np.moveaxis(labels, -1, 0)
@@ -161,6 +168,7 @@ def tryPointMaskerDilatedOnSamples(model):
             im = cv2.imread('downloads/samples/' + str(i) + '.jpg')
         
         im = cv2.resize(im, (224, 224))
+        im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
         coords = getCoordsFromImage(model, im)
         utils.visualizeCoords(im, coords, special_indices=np.arange(0, len(coords)))
 
@@ -373,9 +381,11 @@ def videoTest(model):
             cv2.circle(frame, (int(coord[0]), int(coord[1])), 1, (0, 0, 255), thickness=1, lineType=8, shift=0)
 
         roi_color = frame[y:y+h, x:x+w]
+        roi_color = cv2.cvtColor(roi_color, cv2.COLOR_BGR2RGB)
         preds = getCoordsFromImage(model, roi_color)
         for coord in preds:
-            final_coord = (x + int(round(w / 224.0 * coord[1])), y + int(h / 224.0 * round(coord[0])))
+            #final_coord = (x + int(round(w / 224.0 * coord[1])), y + int(h / 224.0 * round(coord[0])))
+            final_coord = (x + int(coord[1]), y + int(coord[0]))
             cv2.circle(frame, final_coord, 1, (0,255,0), thickness=1, lineType=8, shift=0)
 
             #eyes = eye_cascade.detectMultiScale(roi_gray)

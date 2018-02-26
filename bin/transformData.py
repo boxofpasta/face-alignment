@@ -23,7 +23,7 @@ import json
 
 """ Run to update the .npy files (resized images and labels) from the downloaded dataset. """
 
-transform_train = True
+transform_train = False
 transform_test = True # ignored if use_samples == True
 ibug_version = True
 

@@ -94,21 +94,8 @@ if __name__ == '__main__':
     for i in range(len(ims)):
         utils.visualizeCoordMasks(ims[i], masks[i])
     """
-
-    #model = factory.getSaved('models/tmp/test.h5')
-    #model = factory.getSaved('models/lip_masker_100.h5')
-    #model = factory.getLipMasker(alpha_1=1, alpha_2=1)
-    #model = factory.getSaved('models/lip_fc_100.h5')
-    #model = factory.getFullyConnected(alpha=1.0)
-    #model.summary()
     #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
-
-    #model = factory.getSaved('models/lip_masker_rand_bbox_100.h5')
-    #model = factory.getSaved('models/lip_masker_rand_bbox_fpn_100.h5')
-    #model = factory.getLipMasker()
-    #model_path = 'models/tmp/point_masker_small.h5'
-    #model_path = 'models/tmp/point_masker_vanilla_no_skip.h5'
-    model_name = 'point_masker_dilated_std002'
+    model_name = 'point_masker_dilated_v2_std002'
     model_folder = 'models/' + model_name
     model_path = model_folder + '/model.h5'
     #model = factory.getPointMaskerSmall()
@@ -118,14 +105,7 @@ if __name__ == '__main__':
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
     #model.summary()
-    #model = factory.getBboxRegressor()
-    #model = factory.getFullyConnected(alpha=0.5)
-    #model = factory.getBboxRegressor()
-    #model = factory.getSaved('models/lip_masker_zoomed_100.h5')
-    #model = factory.getSaved('models/lip_fc.h5')
-    #model = factory.getSaved('models/lip_masker_zoomed_100.h5')
-    #model = factory.getSaved('models/lip_masker_sep_100.h5')
-    #model = factory.getSaved('models/lip_masker_050.h5')
+
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     #train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len, val_split_perc=0.2)
     train_path = 'data/train_ibug'
@@ -181,7 +161,7 @@ if __name__ == '__main__':
     
     if not train:
         val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, val_path)
-        print modelTests.getNormalizedDistanceError(model, val_batch_generator)
+        modelTests.testNormalizedDistanceError(model, val_batch_generator)
         #modelTests.videoTest(model)
         #modelTests.tryPointMaskerDilatedOnSamples(model)
         #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
@@ -190,7 +170,7 @@ if __name__ == '__main__':
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        total_epochs = 120
+        total_epochs = 160
         epochs_before_saving = 30
         prev_epochs = 0
         cur_epoch = 0

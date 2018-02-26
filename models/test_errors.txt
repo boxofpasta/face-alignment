@@ -86,4 +86,12 @@ for 14x14 resolution, lowest resolution loss:
 # std=0.02
 (165 epochs @ 6E-2) : loss: 5997.1793 - pointMaskDistance: 0.1183 - val_loss: 6295.4792 - val_pointMaskDistance: 0.1185
 
+# vanilla encoder-decoder module with bilinear upsampling
+(150 epochs @ 6E-2) : loss: 6391.2594 - pointMaskDistance: 0.1828 - val_loss: 6587.4440 - val_pointMaskDistance: 0.1731
+
+# with odd dilation rates + intermediate dense convolution layers
+(120 epochs @ 0.1) : loss: 6240.8353 - pointMaskDistance: 0.1746 - val_loss: 6316.9873 - val_pointMaskDistance: 0.1335
+
+# with odd dilation rates
+(150 epochs @ 6E-2) : loss: 6063.8427 - pointMaskDistance: 0.1019 - val_loss: 6061.2618 - val_pointMaskDistance: 0.1022
 

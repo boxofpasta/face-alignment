@@ -190,8 +190,8 @@ def serializeData(all_ims, all_coords, npy_path, ibug_version=False):
 
 def normalizeCoords(coords, im_width, im_height):
     for coord in coords:
-        coord[0] /= (im_height - 1)
-        coord[1] /= (im_width - 1)
+        coord[0] /= im_height
+        coord[1] /= im_width
     return coords
 
 #def denormalizeCoords(coords, im_width, im_height):   
@@ -235,7 +235,6 @@ def getReyeCenter(coords):
     return np.array([np.mean(reye_coords[:,0]), np.mean(reye_coords[:,1])])
 
 def getEyeDistance(coords):
-    print(np.shape(coords))
     leye_center = getLeyeCenter(coords)
     reye_center = getReyeCenter(coords)
     return np.linalg.norm(leye_center - reye_center)

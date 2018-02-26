@@ -274,11 +274,12 @@ class ModelFactory:
         # 56x56 resolution
         # 11x11 receptive field wrt image
         
+        # using odd numbers helps with decreasing feature overlap, and increases information coverage.
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[2,2])
-        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[4,4])
-        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[8,8])
+        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[5,5])
+        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[9,9])
         x = layerUtils.depthwiseConvBlock(x, 64, 128, dilation_rate=[16,16])
-        
+
         x = layerUtils.depthwiseConvBlock(x, 128, 128)
         #x = layerUtils.depthwiseConvBlock(x, 64, 64)
         # 139x139 receptive field wrt image (deprecated, needs manual update)
@@ -331,32 +332,33 @@ class ModelFactory:
 
         # 14x14
         # having a larger kernel size gives a larger receptive field, which helps prevent misclassification
-        x = layerUtils.depthwiseConvBlock(x, 128, 128, kernel_size=(7,7))
+        x = layerUtils.depthwiseConvBlock(x, 128, 128, dilation_rate=[8,8])
         z.append(x)
 
         method = tf.image.ResizeMethod.BILINEAR
         x = layerUtils.Resize(28, method)(x)
         x = Add()([x, z[1]])
-        x = layerUtils.depthwiseConvBlock(x, 128, 64)
-        x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        #x = layerUtils.depthwiseConvBlock(x, 64, 64)
 
         x = layerUtils.Resize(56, method)(x)
-        x = Add()([x, z[0]])
-        x = layerUtils.depthwiseConvBlock(x, 64, 32)
-        x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
+        #x = Add()([x, z[0]])
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
+        #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
 
         #loss = layerUtils.PointMaskSoftmaxLossLayer(l)([label_masks, x])
-        loss = layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks, x])
-        x = Activation('sigmoid')(x)
+        #loss = layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks, x])
+        #x = Activation('sigmoid')(x)
         pred = x
-        loss = Lambda(lambda x: x, name='f0')(loss)
+        #loss = Lambda(lambda x: x, name='f0')(loss)
         
         model = Model(
-            inputs=[img_input, label_masks], 
-            outputs=[loss, pred]
+            inputs=[img_input], 
+            outputs=[pred]
         )
-        optimizer = optimizers.adam(lr=5E-3)
-        model.compile(loss=[self.identityLoss, None], optimizer=optimizer)
+        optimizer = optimizers.adam(lr=6E-2)
+        model.compile(loss=[ self.pointMaskSigmoidLoss ], metrics=[ self.pointMaskDistance ], optimizer=optimizer)
         return model
 
     def getPointMasker(self):
