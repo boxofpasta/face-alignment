@@ -1,10 +1,13 @@
 import sys
 train = bool(int(sys.argv[1]))
 
+import datetime
 import os
 import time
 import scipy.misc
 import numpy as np
+np.random.seed(0)
+
 import matplotlib
 import keras
 if not train:
@@ -89,21 +92,32 @@ if __name__ == '__main__':
     batch_generator = BatchGenerator.PointMaskBatchGenerator(samples, 'data/train_ibug', factory.mask_side_len)
     
     """
+    for sample in samples:
+        test_im = cv2.imread('downloads/helen_ibug/trainset/' + sample + '.jpg')
+        plt.imshow(test_im)
+        plt.show()
+        test_im = cv2.cvtColor(test_im, cv2.COLOR_BGR2LUV)
+        plt.imshow(test_im)
+        plt.show()
+    """
+
     X, Y = batch_generator.getBatchFromNames(samples, augment=True)
     ims, masks = X[0], Y[0]
     for i in range(len(ims)):
+        plt.imshow(masks[i][:,:,0])
+        plt.show()
         utils.visualizeCoordMasks(ims[i], masks[i])
-    """
+
     #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
     #model_name = 'point_masker_dilated_v2_std002'
-    model_name = 'point_masker_cascaded'
-    model_folder = 'models/' + model_name
+    model_name = 'point_masker_attention'
+    model_folder = 'models/' + model_name + '/now.strftime("%Y-%m-%d:%H:%M")'
     model_path = model_folder + '/model.h5'
     #model = factory.getPointMaskerSmall()
-    #model = factory.getPointMaskerVanilla()
+    #model = factory.getPointMaskerConcat()
     #model = factory.getPointMaskerDilated()
-    #model = factory.getPointMaskerCascaded()
-    model = factory.getSaved(model_path)
+    model = factory.getPointMaskerAttention()
+    #model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
     model.summary()
@@ -124,7 +138,7 @@ if __name__ == '__main__':
     all_train_names = all_names[split_val:]
     """
 
-    train_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_train_names, train_path, factory.mask_side_len)
+    train_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_train_names, train_path, factory.mask_side_len, augment_on_generate=True)
     val_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_val_names, val_path, factory.mask_side_len, augment_on_generate=False)
     #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
 
@@ -172,25 +186,21 @@ if __name__ == '__main__':
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        total_epochs = 30
-        epochs_before_saving = 30
-        prev_epochs = 120
-        cur_epoch = 0
-        while cur_epoch < total_epochs:
-            cur_num_epochs = min(total_epochs - cur_epoch, epochs_before_saving)
-            tb_log_dir = model_folder + '/tensorboard/'
-            tb_callback = keras.callbacks.TensorBoard(log_dir=tb_log_dir, 
-                                                      histogram_freq=0, #cur_num_epochs, 
-                                                      write_graph=True, 
-                                                      write_images=True)
-            model.fit_generator(generator=train_batch_generator.generate(),
-                                validation_data=val_batch_generator.getAllData(),  
-                                steps_per_epoch=train_batch_generator.steps_per_epoch,
-                                epochs=cur_num_epochs,
-                                callbacks=[tb_callback])
-            model.save(model_path)
-            cur_epoch += cur_num_epochs
-            print 'Finished training for: ' + str(cur_epoch) + ' epochs, saving to: ' + model_path
+        epochs = 150
+        now = datetime.datetime.now()
+        tb_log_dir = model_folder + '/tensorboard/'
+        tb_callback = keras.callbacks.TensorBoard(log_dir=tb_log_dir, 
+                                                    histogram_freq=0, #cur_num_epochs, 
+                                                    write_graph=True, 
+                                                    write_images=True)
+        cp_callback = keras.callbacks.ModelCheckpoint(model_path, monitor='val_loss', verbose=0, save_best_only=True, 
+                                                      save_weights_only=False, mode='auto', period=30)
+        model.fit_generator(generator=train_batch_generator.generate(),
+                            validation_data=val_batch_generator.getAllData(),  
+                            steps_per_epoch=train_batch_generator.steps_per_epoch,
+                            epochs=150,
+                            callbacks=[tb_callback, cp_callback])
+        print 'Finished training for: ' + str(cur_epoch) + ' epochs, saving to: ' + model_path
         
         #model.save('models/tmp/lip_fc.h5')
         #model.save('models/tmp/lip_masker_100.h5')

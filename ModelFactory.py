@@ -255,7 +255,7 @@ class ModelFactory:
         model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
         return model
 
-    def getPointMaskerCascaded(self):
+    def getPointMaskerAttention(self):
         im_shape = (self.im_width, self.im_height, 3)
         num_coords = 12
         img_input = Input(shape=im_shape)
@@ -268,27 +268,29 @@ class ModelFactory:
         # 56x56
 
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        x = layerUtils.depthwiseConvBlock(x, 64, 64)
         z = x
-        z = layerUtils.depthwiseConvBlock(x, 64, num_coords)
+        z = layerUtils.depthwiseConvBlock(x, 64, 2 * num_coords, final_activation='leaky_relu')
 
         x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
         # 28x28
 
-        #x = layerUtils.depthwiseConvBlock(x, 128, 128)
         x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
         # 14x14
 
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
         x = layerUtils.depthwiseConvBlock(x, 256, 256)
-        x = layerUtils.depthwiseConvBlock(x, 256, num_coords, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 256, 2 * num_coords, final_activation='tanh')
         
         method = tf.image.ResizeMethod.BILINEAR
+        #x = layerUtils.Resize(28, method)(x)
+        #x = layerUtils.depthwiseConvBlock(x, num_coords, num_coords, final_activation='tanh')
         x = layerUtils.Resize(56, method)(x)
         x = Multiply()([x, z])
         # 56x56
 
-        x = layerUtils.depthwiseConvBlock(x, num_coords, 128)
+        x = layerUtils.depthwiseConvBlock(x, 2 * num_coords, 128)
         x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
         pred = x
         
@@ -344,10 +346,7 @@ class ModelFactory:
         model.compile(loss=[self.pointMaskSigmoidLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
         return model
 
-    def getPointMaskerVanilla(self):
-        """ 
-        Nothing fancy about this one. Just a few skip connections.
-        """
+    def getPointMaskerConcat(self):
         im_shape = (self.im_width, self.im_height, 3)
 
         # lip only for now
@@ -366,30 +365,28 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
 
         # 56x56
-        b = layerUtils.StopGradientLayer()(x)
-        z.append(layerUtils.depthwiseConvBlock(b, 64, 64))
+        z.append(layerUtils.depthwiseConvBlock(x, 64, 64))
         x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
         
         # 28x28
-        b = layerUtils.StopGradientLayer()(x)
-        z.append(layerUtils.depthwiseConvBlock(b, 128, 128))
-        x = layerUtils.depthwiseConvBlock(x, 128, 128, down_sample=True)
+        #z.append(layerUtils.depthwiseConvBlock(b, 128, 128))
+        x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
 
         # 14x14
         # having a larger kernel size gives a larger receptive field, which helps prevent misclassification
-        x = layerUtils.depthwiseConvBlock(x, 128, 128, dilation_rate=[8,8])
-        z.append(x)
+        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
+        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
+        x = layerUtils.depthwiseConvBlock(x, 256, 256)
+        
+        #z.append(x)
 
         method = tf.image.ResizeMethod.BILINEAR
-        x = layerUtils.Resize(28, method)(x)
-        x = Add()([x, z[1]])
-        x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        #x = layerUtils.depthwiseConvBlock(x, 64, 64)
-
+        x = layerUtils.depthwiseConvBlock(x, 256, 128)
         x = layerUtils.Resize(56, method)(x)
-        #x = Add()([x, z[0]])
-        x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
+        
+        z[0] = layerUtils.depthwiseConvBlock(z[0], 64, 64)
+        x = Concatenate()([x, z[0]])
+        x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
 
         #loss = layerUtils.PointMaskSoftmaxLossLayer(l)([label_masks, x])

@@ -2,7 +2,7 @@ from keras.engine.topology import Layer
 from depthwise_conv2d import DepthwiseConvolution2D
 from keras import backend as K
 from keras.layers import Input, Convolution2D, Conv2DTranspose, Lambda, \
-    GlobalAveragePooling2D, Dense, BatchNormalization, Activation, Concatenate, Add
+    GlobalAveragePooling2D, Dense, BatchNormalization, Activation, Concatenate, Add, LeakyReLU
 import numpy as np
 import tensorflow as tf
 import generalUtils as utils
@@ -229,7 +229,11 @@ def depthwiseConvBlock(x, features_in, features_out, down_sample=False,
     x = Activation('relu')(x)
     x = Convolution2D(int(features_out), (1, 1), strides=(1, 1), padding='same', use_bias=False)(x)
     x = BatchNormalization()(x)
-    x = Activation(final_activation)(x)
+
+    if final_activation == 'leaky_relu':
+        x = LeakyReLU(alpha=0.3)(x)
+    else:
+        x = Activation(final_activation)(x)
     return x
 
 def resizeConvBlock(x, out_res, features_in, features_out):

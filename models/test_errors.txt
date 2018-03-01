@@ -95,5 +95,24 @@ for 14x14 resolution, lowest resolution loss:
 # with odd dilation rates
 (150 epochs @ 6E-2) : loss: 6063.8427 - pointMaskDistance: 0.1019 - val_loss: 6061.2618 - val_pointMaskDistance: 0.1022
 
-# the 'cascade' model that I bullshitted
-(150 epochs @ 6E-2) : loss: 5651.6807 - pointMaskDistance: 0.0552 - val_loss: 5734.3161 - val_pointMaskDistance: 0.0663
+# the 'attention' model. Note that it's difficult to get consistent results with this one, possibly because of dead ReLUs.
+(150, more likely to be 180 in retrospect, epochs @ 6E-2) : loss: 5651.6807 - pointMaskDistance: 0.0552 - val_loss: 5734.3161 - val_pointMaskDistance: 0.0663
+
+# back to the basic encoder-decoder network, except with dilated convolutions in the middle and more 256-d layers
+(180 epochs @ 6E-2) : loss: 5550.8757 - pointMaskDistance: 0.0511 - val_loss: 5776.9667 - val_pointMaskDistance: 0.0793
+
+# attention model with tanh and leaky relu (more consistent results than last time):
+(150 epochs @ 6E-2): loss: 5727.0221 - pointMaskDistance: 0.0585 - val_loss: 6130.2450 - val_pointMaskDistance: 0.1074
+
+(180 epochs @ 6E-2): loss: 5665.9413 - pointMaskDistance: 0.0517 - val_loss: 5936.5323 - val_pointMaskDistance: 0.0825
+
+(210 epochs @ 6E-2): loss: 5603.3227 - pointMaskDistance: 0.0459 - val_loss: 6274.1019 - val_pointMaskDistance: 0.1105
+
+# from here on out, using numpy random seed = 0. 
+# Results may still be slightly inconsistent because of multithreaded (?) data augmentation / batch generation.
+
+# same model as above, std 0.014
+(150 epochs @ 6E-2): loss: 3119.0159 - pointMaskDistance: 0.0573 - val_loss: 3275.3870 - val_pointMaskDistance: 0.0676
+
+# encoder-decoder with concatenation instead of add
+(150 epochs @ 6E-2): loss: 5619.4844 - pointMaskDistance: 0.0499 - val_loss: 5792.6819 - val_pointMaskDistance: 0.0741
