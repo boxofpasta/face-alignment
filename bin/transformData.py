@@ -23,14 +23,14 @@ import json
 
 """ Run to update the .npy files (resized images and labels) from the downloaded dataset. """
 
-transform_train = False
+transform_train = True
 transform_test = True # ignored if use_samples == True
 ibug_version = True
 
 # applies only if transform_train == True and ibug_version == False. For serializing just the helen_1 folder
 use_small = True
 
-targ_im_width = 224
+targ_im_width = 320
 im_extension = '.jpg'
 coords_extension = '.pts' if ibug_version else '.txt'
 downloads_path = cur_folder + '/../downloads'
@@ -57,7 +57,7 @@ if transform_test and not use_samples:
     helenUtils.serializeData(ims, coords, npy_test_path, ibug_version=ibug_version)
     """
 
-if transform_train:
+if transform_train or use_samples:
     if ibug_version:
         im_paths = [downloads_path + '/helen_ibug/trainset']
         coords_path = im_paths[0]

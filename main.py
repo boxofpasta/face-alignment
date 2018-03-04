@@ -94,9 +94,11 @@ if __name__ == '__main__':
     """
     for sample in samples:
         test_im = cv2.imread('downloads/helen_ibug/trainset/' + sample + '.jpg')
-        plt.imshow(test_im)
-        plt.show()
-        test_im = cv2.cvtColor(test_im, cv2.COLOR_BGR2LUV)
+        hsv_im = cv2.cvtColor(test_im, cv2.COLOR_BGR2HSV)
+        hsv_im = hsv_im.astype(np.float32)
+        hsv_im[:,:,1] *= 0.2
+        hsv_im = hsv_im.astype(np.uint8)
+        test_im = cv2.cvtColor(hsv_im, cv2.COLOR_HSV2RGB)
         plt.imshow(test_im)
         plt.show()
     """
@@ -108,16 +110,20 @@ if __name__ == '__main__':
         plt.show()
         utils.visualizeCoordMasks(ims[i], masks[i])
 
-    #plot_model(model, to_file='models/lip_masker_skip_100.jpg')
-    #model_name = 'point_masker_dilated_v2_std002'
-    model_name = 'point_masker_attention'
-    model_folder = 'models/' + model_name + '/now.strftime("%Y-%m-%d:%H:%M")'
+    now = datetime.datetime.now()
+    #time_str = '2018-03-01:04:33' 
+    time_str = now.strftime("%Y-%m-%d:%H:%M")
+    model_name = 'point_masker_concat'
+    model_folder = 'models/' + model_name + '/' + time_str
     model_path = model_folder + '/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/model.h5'
+    model_path = "/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/2018-03-04:17:53/model.h5"
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerConcat()
     #model = factory.getPointMaskerDilated()
-    model = factory.getPointMaskerAttention()
-    #model = factory.getSaved(model_path)
+    #model = factory.getPointMaskerAttention()
+    #model = factory.getPointMaskerDilated()
+    model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     #model = factory.getSaved(model_path)
     model.summary()
@@ -177,9 +183,9 @@ if __name__ == '__main__':
     
     if not train:
         val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, val_path)
-        modelTests.testNormalizedDistanceError(model, val_batch_generator)
+        #modelTests.testNormalizedDistanceError(model, val_batch_generator)
         #modelTests.videoTest(model)
-        #modelTests.tryPointMaskerDilatedOnSamples(model)
+        modelTests.tryPointMaskerDilatedOnSamples(model)
         #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)
@@ -187,20 +193,22 @@ if __name__ == '__main__':
 
     if train:
         epochs = 150
-        now = datetime.datetime.now()
         tb_log_dir = model_folder + '/tensorboard/'
         tb_callback = keras.callbacks.TensorBoard(log_dir=tb_log_dir, 
-                                                    histogram_freq=0, #cur_num_epochs, 
+                                                    histogram_freq=0,
+                                                    write_grads=True,
                                                     write_graph=True, 
                                                     write_images=True)
-        cp_callback = keras.callbacks.ModelCheckpoint(model_path, monitor='val_loss', verbose=0, save_best_only=True, 
-                                                      save_weights_only=False, mode='auto', period=30)
+        lr_callback = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=10, verbose=1, mode='auto', 
+                                                    epsilon=0.0001, cooldown=0, min_lr=0)
+        cp_callback = keras.callbacks.ModelCheckpoint(model_path, monitor='val_loss', verbose=1, save_best_only=True, 
+                                                    save_weights_only=False, mode='auto', period=30)
         model.fit_generator(generator=train_batch_generator.generate(),
                             validation_data=val_batch_generator.getAllData(),  
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
-                            epochs=150,
-                            callbacks=[tb_callback, cp_callback])
-        print 'Finished training for: ' + str(cur_epoch) + ' epochs, saving to: ' + model_path
+                            epochs=epochs,
+                            callbacks=[tb_callback, cp_callback, lr_callback])
+        print 'Finished training for: ' + str(epochs) + ' epochs, everything was saved to: ' + model_path
         
         #model.save('models/tmp/lip_fc.h5')
         #model.save('models/tmp/lip_masker_100.h5')

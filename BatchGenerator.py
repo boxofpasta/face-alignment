@@ -93,6 +93,7 @@ class BatchGenerator:
         
         # make sure that rect does not go beyond image borders
         rect = utils.getClippedBbox(im, rect)
+        #utils.visualizeCoords(im, coords)
 
         # crop
         coords[:,0] -= rect[0]
@@ -348,6 +349,18 @@ class PointMaskBatchGenerator(BatchGenerator):
         coords[:,0] -= rect[0]
         coords[:,1] -= rect[1]
         im = utils.getCropped(im, rect)
+
+        # brightness and saturation adjustments
+        if augment:
+            rand_v_delta = (np.random.rand() - 0.5) * 0.2 * 255
+            rand_s_delta = (np.random.rand() - 0.7) * 0.6 * 255
+            im_hsv = cv2.cvtColor(im, cv2.COLOR_RGB2HSV)
+            im_hsv = im_hsv.astype(np.float32)
+            im_hsv[:,:,1] += rand_s_delta
+            im_hsv[:,:,2] += rand_v_delta
+            im_hsv = np.clip(im_hsv, 0, 255)
+            im_hsv = im_hsv.astype(np.uint8)
+            im = cv2.cvtColor(im_hsv, cv2.COLOR_HSV2RGB)
 
         # just the lip coords for now
         # flip

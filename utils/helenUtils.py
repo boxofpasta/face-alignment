@@ -214,7 +214,7 @@ def cropPair(im, label):
     label = np.reshape(label, (-1, 2))
     #lip_coords = getLipCoords(label)
     bbox = utils.getBbox(label)
-    bbox = utils.getExpandedBbox(bbox, 1.0, 1.0)
+    bbox = utils.getExpandedBbox(bbox, 0.3, 0.3)
     bbox = utils.getClippedBbox(im, bbox)
     #bbox = utils.getBbox(lip_coords)
 

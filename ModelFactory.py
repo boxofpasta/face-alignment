@@ -270,7 +270,7 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
         z = x
-        z = layerUtils.depthwiseConvBlock(x, 64, 2 * num_coords, final_activation='leaky_relu')
+        z = layerUtils.depthwiseConvBlock(z, 64, 12, final_activation='leaky_relu')
 
         x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
         # 28x28
@@ -279,9 +279,9 @@ class ModelFactory:
         # 14x14
 
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
-        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
-        x = layerUtils.depthwiseConvBlock(x, 256, 256)
-        x = layerUtils.depthwiseConvBlock(x, 256, 2 * num_coords, final_activation='tanh')
+        x = layerUtils.depthwiseConvBlock(x, 256, 128, dilation_rate=[4,4])
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='tanh')
         
         method = tf.image.ResizeMethod.BILINEAR
         #x = layerUtils.Resize(28, method)(x)
@@ -290,15 +290,17 @@ class ModelFactory:
         x = Multiply()([x, z])
         # 56x56
 
-        x = layerUtils.depthwiseConvBlock(x, 2 * num_coords, 128)
-        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 12, 64, kernel_size=(5,5))
+        x = layerUtils.depthwiseConvBlock(x, 64, num_coords, final_activation='linear')
         pred = x
         
         model = Model(
             inputs=[img_input], 
             outputs=[pred]
         )
-        optimizer = optimizers.adam(lr=6E-2)
+
+        optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
+        #optimizer = optimizers.adam(lr=6E-2)
         model.compile(loss=[self.pointMaskSigmoidLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
         return model
 
@@ -321,6 +323,7 @@ class ModelFactory:
         # 56x56 resolution
         # 11x11 receptive field wrt image
         
+        """
         # using odd numbers helps with decreasing feature overlap, and increases information coverage.
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[2,2])
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[5,5])
@@ -332,6 +335,8 @@ class ModelFactory:
         # 139x139 receptive field wrt image (deprecated, needs manual update)
 
         x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
+        """
+        x = layerUtils.depthwiseConvBlock(x, 64, num_coords, final_activation='linear')
 
         #loss = layerUtils.PointMaskSoftmaxLossLayer(l)([label_masks, x])
         #loss = layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks, x])
@@ -399,7 +404,9 @@ class ModelFactory:
             inputs=[img_input], 
             outputs=[pred]
         )
-        optimizer = optimizers.adam(lr=6E-2)
+        
+        #optimizer = optimizers.adam(lr=6E-2)
+        optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
         model.compile(loss=[ self.pointMaskSigmoidLoss ], metrics=[ self.pointMaskDistance ], optimizer=optimizer)
         return model
 

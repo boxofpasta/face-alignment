@@ -114,5 +114,13 @@ for 14x14 resolution, lowest resolution loss:
 # same model as above, std 0.014
 (150 epochs @ 6E-2): loss: 3119.0159 - pointMaskDistance: 0.0573 - val_loss: 3275.3870 - val_pointMaskDistance: 0.0676
 
+# same model but with 2 * num_coords filters at bottleneck layer, std 0.02
+(150 epochs @ 6E-2) loss: 5632.9867 - pointMaskDistance: 0.0630 - val_loss: 6072.2349 - val_pointMaskDistance: 0.0921
+
 # encoder-decoder with concatenation instead of add
 (150 epochs @ 6E-2): loss: 5619.4844 - pointMaskDistance: 0.0499 - val_loss: 5792.6819 - val_pointMaskDistance: 0.0741
+
+# attention model but with a 256-d layer removed and the other reduced to 64-d
+
+# reduced last decoder layer in depth from 128-d to 64-d. removed one or two 256-d layers in the encoder.
+(150 epochs w/ nesterov momentum @ 5E-5) loss: 5692.4031 - pointMaskDistance: 0.0539 - val_loss: 5871.3212 - val_pointMaskDistance: 0.0831

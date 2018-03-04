@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import cv2
-#import dlib
+import dlib
 import os
 import sys
 
@@ -94,10 +94,19 @@ def testNormalizedDistanceError(model, batch_generator):
     overall_avg = 0.0
     all_avgs = []
 
+    """
+    for i in range(len(ims)):
+        im = ims[i]
+        factors = np.expand_dims([len(im), len(im[0])], axis=0)
+        label = labels[i] * factors
+        utils.visualizeCoords(ims[i], label)
+    """
+
     #for i in range(len(ims)):
     #    utils.visualizeCoords(ims[i], 224 * labels[i])
 
     print 'Processing test set of images: '
+    t1 = time.time()
     for i in range(len(ims)):
         im = ims[i]
         #labels[i] = helenUtils.normalizeCoords(labels[i], len(im[0]), len(im))
@@ -125,23 +134,32 @@ def testNormalizedDistanceError(model, batch_generator):
         all_coords = np.concatenate([lip_preds, lip_labels], axis=0)
         all_coords = np.concatenate([all_coords, [leye_coord], [reye_coord]], axis=0)
         pred_indices = np.arange(0, len(all_coords) / 2)
-        utils.visualizeCoords(im, all_coords, pred_indices)
-        print 'eye to eye distance: ' + str(eye_dist)
-        print 'avg error across all points: ' + str(cur_avg)
+        #utils.visualizeCoords(im, all_coords, pred_indices)
+        #print 'eye to eye distance: ' + str(eye_dist)
+        #print 'avg error across all points: ' + str(cur_avg)
         overall_avg += cur_avg
         all_avgs.append(cur_avg)
         utils.informProgress(i, len(ims))
     
+    processing_time = time.time() - t1
     all_avgs = sorted(all_avgs)
     overall_avg /= len(ims)
     
-    print '\nmedian normalized landmark error: ' + str(all_avgs[len(all_avgs) / 2])
-    print 'average normalized landmark error: ' + str(overall_avg)
+    print '\nMedian normalized landmark error: ' + str(all_avgs[len(all_avgs) / 2])
+    print 'Average normalized landmark error: ' + str(overall_avg)
+    print 'Total processing time: ' + str(processing_time)
+    print 'Per-image processing time: ' + str(processing_time / float(len(ims)))
 
 
-def getCoordsFromImage(model, im):
-    orig_width = len(im[0])
-    orig_height = len(im)
+def getCoordsFromImage(model, im, mode='mean'):
+    width = len(im[0])
+    height = len(im)
+    preds = getNormalizedMasksFromImage(model, im)
+    coords = utils.getCoordsFromPointMasks(preds, width, height, mode)
+    return coords
+
+def getNormalizedMasksFromImage(model, im):
+
     im = im[:,:,0:3]
     im = cv2.resize(im, (224, 224))
     X = [np.array([im])]
@@ -157,9 +175,7 @@ def getCoordsFromImage(model, im):
     preds = utils.imSoftmax(preds)
     preds = np.moveaxis(preds, -1, 0)
     preds = [ normalizeMask(pred) for pred in preds]
-    
-    coords = utils.getCoordsFromPointMasks(preds, orig_width, orig_height)
-    return coords
+    return preds
 
 def tryPointMaskerDilatedOnSamples(model):
     folder = 'downloads/samples/'
@@ -168,8 +184,20 @@ def tryPointMaskerDilatedOnSamples(model):
             im = cv2.imread(folder + fname)
             im = cv2.resize(im, (224, 224))
             im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-            coords = getCoordsFromImage(model, im)
-            utils.visualizeCoords(im, coords, special_indices=np.arange(0, len(coords)))
+            width = len(im[0])
+            height = len(im)
+            masks = getNormalizedMasksFromImage(model, im)
+            coords = utils.getCoordsFromPointMasks(masks, width, height, 'mean')
+            max_coords = utils.getCoordsFromPointMasks(masks, width, height, 'max')
+            """masks /= np.max(masks, axis=[1,2])
+            summed = np.sum(masks, axis=0)
+            summed = cv2.resize(summed, (height, width))
+            summed = np.minimum(1, summed)
+            """
+            masks = np.moveaxis(masks, 0, -1)
+            utils.visualizeCoords(im, coords)
+            #utils.visualizeCoordMasks(im, masks)
+            #utils.visualizeCoords(im, np.concatenate([max_coords, coords]), special_indices=np.arange(0, len(coords)))
 
 def tryPointMasker(model, batch_generator, sample_names=None):
     #if sample_names == None:
@@ -355,10 +383,7 @@ def videoTest(model):
                 final_coord = (x + int(round(coord[1])), y + int(round(coord[0])))
                 cv2.circle(frame, final_coord, 1, (0,255,0), thickness=1, lineType=8, shift=0)
         """
-
-        #frame = frame[100:300, 140:540]
-        #frame = frame[100:200, 100:200]
-        #dlib_rect = dlib.rectangle(140, 100, len(frame[0]), len(frame)) 
+        """
         dlib_rect = dlib.rectangle(140, 0, 540, len(frame)) 
         detected_landmarks = predictor(frame, dlib_rect).parts()  
         landmarks = np.array([[p.x, p.y] for p in detected_landmarks])   
@@ -378,7 +403,11 @@ def videoTest(model):
 
         for coord in landmarks:
             cv2.circle(frame, (int(coord[0]), int(coord[1])), 1, (0, 0, 255), thickness=1, lineType=8, shift=0)
-
+        """
+        w = h = int(0.6 * len(frame))
+        y = int(0.5 * (len(frame) - h))
+        x = int(0.5 * (len(frame[0]) - w))
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
         roi_color = frame[y:y+h, x:x+w]
         roi_color = cv2.cvtColor(roi_color, cv2.COLOR_BGR2RGB)
         preds = getCoordsFromImage(model, roi_color)

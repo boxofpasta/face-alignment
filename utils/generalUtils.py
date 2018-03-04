@@ -116,6 +116,7 @@ def coordsToHeatmaps(coords, elms_per_side, stddev=0.01):
         heatmap /= np.sum(heatmap)
         heatmaps.append(heatmap)
     return heatmaps
+    
 
 def visualizeMask(im, mask, targ_im_len=-1):
     """
@@ -127,7 +128,7 @@ def visualizeMask(im, mask, targ_im_len=-1):
         im = cv2.resize(im, (targ_im_len, targ_im_len), interpolation=im_resize_method)
         mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=mask_resize_method)
 
-    mask = 80.0 * np.minimum(mask, 1)
+    mask = 160.0 * np.minimum(mask, 1)
     mask = mask.astype(np.uint8)
     rem = 255 - im[:,:,1]
     im[:,:,1] += np.minimum(rem, mask)
@@ -146,6 +147,7 @@ def visualizeCoordMasks(im, masks):
         Has to be of shape (mask_side_len, mask_side_len, num_coords)
     """
     
+    masks /= np.max(masks, axis=(0,1))
     summed = np.sum(masks, axis=-1)
     summed = cv2.resize(summed, (len(im), len(im[0])), interpolation=cv2.INTER_LINEAR)
     visualizeMask(im, summed)
@@ -355,12 +357,15 @@ def visualizeBboxes(im, boxes):
         ax.plot([box[0], box[0]], [box[3], box[1]], '-', color=color)
     plt.show()
 
-def getCoordsFromPointMasks(masks, targ_width, targ_height):
+def getCoordsFromPointMasks(masks, targ_width, targ_height, mode = 'mean'):
     """
     Parameters
     ----------
     masks: 
         Should be of shape (num_coords, height, width)
+
+    mode: 
+        Method in which we extract indices from response maps. 'mean' or 'max' are valid.
     
     Returns
     -------
@@ -368,19 +373,24 @@ def getCoordsFromPointMasks(masks, targ_width, targ_height):
     """
     coords = []
     for coord_mask in masks:
-        # normalize mask
-        width_factor = float(targ_width) / len(coord_mask[0])
-        height_factor = float(targ_height) / len(coord_mask)
-        coord_mask /= np.sum(coord_mask)
-        x_inds = np.arange(0, len(coord_mask[0]))
-        y_inds = np.arange(0, len(coord_mask))
-        x_avg = width_factor * np.sum(np.array([x_inds]) * coord_mask)
-        y_avg = height_factor * np.sum(np.transpose(np.array([y_inds])) * coord_mask)
-        #plt.imshow(coord_mask)
-        #plt.show()
-        #print x_avg
-        #print y_avg
-        coords.append([y_avg, x_avg])
+        coord_mask = cv2.resize(coord_mask, (targ_height, targ_width))
+
+        if mode == 'max':
+            y_ind, x_ind = np.unravel_index(np.argmax(coord_mask), coord_mask.shape)
+            coords.append([y_ind, x_ind])
+        
+        if mode == 'mean':
+            # normalize mask
+            coord_mask /= np.sum(coord_mask)
+            x_inds = np.arange(0, len(coord_mask[0]))
+            y_inds = np.arange(0, len(coord_mask))
+            x_avg = np.sum(np.array([x_inds]) * coord_mask)
+            y_avg = np.sum(np.transpose(np.array([y_inds])) * coord_mask)
+            #plt.imshow(coord_mask)
+            #plt.show()
+            #print x_avg
+            #print y_avg
+            coords.append([y_avg, x_avg])
     
     return coords
 
