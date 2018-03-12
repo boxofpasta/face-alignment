@@ -1,3 +1,5 @@
+
+
 from scipy.stats import norm
 from random import shuffle
 import os
@@ -30,7 +32,8 @@ class BatchGenerator:
         Applies only to the generate function. If true, augments data.
 
     """
-    def __init__(self, names, path, augment_on_generate=True, coords_sparsity=1):
+    def __init__(self, names, path, augment_on_generate=True, coords_sparsity=1, ibug_version=True):
+        self.ibug_version = ibug_version
         self.targ_im_len = 224
         self.batch_size = 32
         self.all_names = []
@@ -324,7 +327,7 @@ class PointMaskBatchGenerator(BatchGenerator):
             width = len(im[0])
             height = len(im)
             center = [(height-1)/2.0, (width-1)/2.0]
-            max_rot_deg = 22
+            max_rot_deg = 10
             rot_deg = max_rot_deg * np.random.rand(1)
             rot_rad = np.deg2rad(rot_deg)
             im = scipy.misc.imrotate(im, rot_deg)
@@ -365,20 +368,42 @@ class PointMaskBatchGenerator(BatchGenerator):
         # just the lip coords for now
         # flip
         flipped = bool(np.random.randint(0, 2)) if augment else False
-        lip_coords = helenUtils.getLipCoords(coords, len(im[0]), flip_x=flipped)
+        lip_coords = helenUtils.getLipCoords(coords, len(im[0]), flip_x=flipped, ibug_version=self.ibug_version)
         im = np.fliplr(im) if flipped else im
-
-        # random color augmentation (?)
 
         # normalize the coords and image
         im = cv2.resize(im, (self.targ_im_len, self.targ_im_len))
-        lip_coords = helenUtils.normalizeCoords(lip_coords, rect[3] - rect[1], rect[2] - rect[0])
+        crop_width = rect[3] - rect[1]
+        crop_height = rect[2] - rect[0]
+        normalized_lip_coords = helenUtils.normalizeCoords(lip_coords, crop_width, crop_height)
     
         # mask from coords
-        masks = utils.coordsToHeatmapsFast(lip_coords, self.pdfs)
+        masks = utils.coordsToHeatmapsFast(normalized_lip_coords, self.pdfs)
         masks = np.moveaxis(masks, 0, -1)
         masks /= np.max(masks, axis=(0,1))
         l = self.mask_side_len
+
+        """
+        temp_mask_shape = (224, 224)
+        #masks = cv2.resize(masks, temp_mask_shape, interpolation=cv2.INTER_LINEAR)
+
+        # line mask
+        lipline_mask = helenUtils.getLipLineMask(lip_coords, (crop_height, crop_width), temp_mask_shape)
+        lipline_mask = cv2.resize(lipline_mask, (112, 112), interpolation=cv2.INTER_AREA)
+        lipline_mask = cv2.resize(lipline_mask, temp_mask_shape, interpolation=cv2.INTER_LINEAR)
+        plt.imshow(lipline_mask)
+        plt.show()
+        
+        lipline_mask = np.expand_dims(lipline_mask, -1)
+        """
+
+        """
+        masks *= lipline_mask
+        for i in range(12):
+            plt.imshow(masks[:,:,i])
+            plt.show()
+        """
+
         masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
         return [im], [masks]
 

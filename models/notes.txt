@@ -124,3 +124,35 @@ for 14x14 resolution, lowest resolution loss:
 
 # reduced last decoder layer in depth from 128-d to 64-d. removed one or two 256-d layers in the encoder.
 (150 epochs w/ nesterov momentum @ 5E-5) loss: 5692.4031 - pointMaskDistance: 0.0539 - val_loss: 5871.3212 - val_pointMaskDistance: 0.0831
+
+# on in-house dataset, 20% val set size, no data augmentation
+(90 epochs w/ same lr as above) : loss: 5891.6495 - pointMaskDistance: 0.0552 - val_loss: 7447.9353 - val_pointMaskDistance: 0.2189
+
+# For below: on in-house dataset, 20% val set size, data augmentation
+# 150 epochs with nesterov momentum unless otherwise specified
+
+# concat model
+loss: 5887.2887 - pointMaskDistance: 0.0812 - val_loss: 6139.4045 - val_pointMaskDistance: 0.0698
+
+# attention model with 4 * num_coords in bottleneck layer
+loss: 6048.8748 - pointMaskDistance: 0.1131 - val_loss: 6214.0658 - val_pointMaskDistance: 0.0977
+
+# attention model with num_coords in bottleneck, but with 256-d layers unlike the previous experiment (128-d)
+loss: 6046.4767 - pointMaskDistance: 0.0955 - val_loss: 6231.4051 - val_pointMaskDistance: 0.0895
+
+# same model as above but with added pointMaskDistanceLoss
+# 2018-03-07:22:12
+loss: 4140 - pointMaskDistance: 0.0666 - val_loss: 4296 - val_pointMaskDistance: 0.0782
+
+# same model as above but with adam @ 6E-2
+# 2018-03-07:23:26
+loss: 4117 - pointMaskDistance: 0.0930 - val_loss: 4239 - val_pointMaskDistance: 0.0878
+
+# same model as above but with slightly adjusted loss function, sgd momentum as before, and color augmentation
+
+# concat model
+# 03-11:12:28
+loss: 6022.6358 - pointMaskDistance: 0.1165 - val_loss: 6152.5966 - val_pointMaskDistance: 0.0721
+
+# concat model with mask stddev=0.25
+loss: 12588.3353 - pointMaskDistance: 0.0594 - val_loss: 12686.1874 - val_pointMaskDistance:0.0746

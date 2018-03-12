@@ -60,6 +60,25 @@ class PerturbBboxes(Layer):
         base_config = super(PerturbBboxes, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+class TileMultiply(Layer):
+
+    def __init__(self, multiple, **kwargs):
+        self.multiple = multiple
+        super(TileMultiply, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        x, z = inputs
+        x_tiled = tf.tile(x, [1, 1, 1, self.multiple])
+        return x_tiled * z
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[1]
+
+    def get_config(self):
+        config = {'multiple': self.multiple}
+        base_config = super(TileMultiply, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
     
 class CropAndResize(Layer):
 

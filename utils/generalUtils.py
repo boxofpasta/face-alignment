@@ -13,6 +13,13 @@ import time
 import tensorflow as tf
 import matplotlib.lines as mlines
 
+
+# https://stackoverflow.com/questions/18554012/intersecting-two-dictionaries-in-python
+def getKeysIntersection(dict_a, dict_b):
+    set_a = set(dict_a.keys())
+    set_b = set(dict_b.keys())
+    return set_a & set_b
+
 def transposeList(l):
     return map(list, zip(*l))
 
@@ -128,7 +135,7 @@ def visualizeMask(im, mask, targ_im_len=-1):
         im = cv2.resize(im, (targ_im_len, targ_im_len), interpolation=im_resize_method)
         mask = cv2.resize(mask, (targ_im_len, targ_im_len), interpolation=mask_resize_method)
 
-    mask = 160.0 * np.minimum(mask, 1)
+    mask = 180.0 * np.minimum(mask, 1)
     mask = mask.astype(np.uint8)
     rem = 255 - im[:,:,1]
     im[:,:,1] += np.minimum(rem, mask)
@@ -382,6 +389,12 @@ def getCoordsFromPointMasks(masks, targ_width, targ_height, mode = 'mean'):
         if mode == 'mean':
             # normalize mask
             coord_mask /= np.sum(coord_mask)
+
+            # remove outliers
+            max_val = np.max(coord_mask)
+            coord_mask = np.where(coord_mask > 0.01 * max_val, coord_mask, 0.0)
+            coord_mask /= np.sum(coord_mask)
+
             x_inds = np.arange(0, len(coord_mask[0]))
             y_inds = np.arange(0, len(coord_mask))
             x_avg = np.sum(np.array([x_inds]) * coord_mask)

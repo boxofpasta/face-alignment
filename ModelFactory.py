@@ -29,11 +29,11 @@ from depthwise_conv2d import DepthwiseConvolution2D
 
 class ModelFactory:
 
-    def __init__(self):
+    def __init__(self, ibug_version=True):
         self.im_width = 224
         self.im_height = 224
         self.coords_sparsity = 1
-        self.num_coords = helenUtils.getNumCoords(self.coords_sparsity)
+        self.num_coords = helenUtils.getNumCoords(self.coords_sparsity, ibug_version=ibug_version)
         self.mask_side_len = 56
         self.epsilon = 1E-5
         self.custom_objects = {
@@ -57,7 +57,8 @@ class ModelFactory:
             'PointMaskSoftmaxLossLayer': layerUtils.PointMaskSoftmaxLossLayer,
             'StopGradientLayer': layerUtils.StopGradientLayer,
             'pointMaskDistanceLoss': self.pointMaskDistanceLoss,
-            'pointMaskDistance': self.pointMaskDistance
+            'pointMaskDistance': self.pointMaskDistance,
+            'pointMaskSigmoidDistanceLoss': self.pointMaskSigmoidDistanceLoss
         }
 
     def getSaved(self, path, frozen=False):
@@ -257,7 +258,7 @@ class ModelFactory:
 
     def getPointMaskerAttention(self):
         im_shape = (self.im_width, self.im_height, 3)
-        num_coords = 12
+        num_coords = 13
         img_input = Input(shape=im_shape)
         label_masks = Input(shape=(self.mask_side_len, self.mask_side_len, num_coords))
         
@@ -270,7 +271,8 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
         z = x
-        z = layerUtils.depthwiseConvBlock(z, 64, 12, final_activation='leaky_relu')
+        z = layerUtils.depthwiseConvBlock(z, 64, 64)
+        z = layerUtils.depthwiseConvBlock(z, 64, 128, final_activation='leaky_relu')
 
         x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
         # 28x28
@@ -279,19 +281,20 @@ class ModelFactory:
         # 14x14
 
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
-        x = layerUtils.depthwiseConvBlock(x, 256, 128, dilation_rate=[4,4])
-        x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='tanh')
+        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
+        #x = layerUtils.depthwiseConvBlock(x, 256, 256)
+        x = layerUtils.depthwiseConvBlock(x, 256, 8, final_activation='tanh')
         
         method = tf.image.ResizeMethod.BILINEAR
         #x = layerUtils.Resize(28, method)(x)
         #x = layerUtils.depthwiseConvBlock(x, num_coords, num_coords, final_activation='tanh')
         x = layerUtils.Resize(56, method)(x)
-        x = Multiply()([x, z])
+        x = layerUtils.TileMultiply(128 / 8)([x, z])
+        #x = Multiply()([x, z])
         # 56x56
 
-        x = layerUtils.depthwiseConvBlock(x, 12, 64, kernel_size=(5,5))
-        x = layerUtils.depthwiseConvBlock(x, 64, num_coords, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, kernel_size=(5,5), final_activation='linear')
         pred = x
         
         model = Model(
@@ -301,7 +304,7 @@ class ModelFactory:
 
         optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
         #optimizer = optimizers.adam(lr=6E-2)
-        model.compile(loss=[self.pointMaskSigmoidLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
+        model.compile(loss=[self.pointMaskDistanceLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
         return model
 
     def getPointMaskerDilated(self):
@@ -356,7 +359,7 @@ class ModelFactory:
 
         # lip only for now
         l = self.mask_side_len
-        num_coords = 12 
+        num_coords = 13
         img_input = Input(shape=im_shape)
         label_masks = Input(shape=(l, l, num_coords))
 
@@ -696,6 +699,10 @@ class ModelFactory:
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=preds, dim=1)
         return tf.reduce_sum(cross_entropy)
 
+    def pointMaskSigmoidDistanceLoss(self, labels, preds):
+        weight = 0.7
+        return weight * self.pointMaskSigmoidLoss(labels, preds) + (1.0 - weight) * self.pointMaskDistanceLoss(labels, preds)
+
     def pointMaskSigmoidLoss(self, labels, preds):
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
         return tf.reduce_sum(cross_entropy)
@@ -704,6 +711,7 @@ class ModelFactory:
         """
         We want to penalize mask output errors that are spatially further away from ground truth.
         This is accomplished by multiplying the usual cross entropy loss with squared distance.
+        Furthermore, a penalty will only be applied if the predicted mask is of larger value than the actual one.
         """
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
         width = tf.shape(labels)[2]
@@ -713,9 +721,12 @@ class ModelFactory:
 
         # move channels (corresponding to the coords dim) together with batch dim to avoid confusion
         labels = tf.transpose(labels, [0, 3, 1, 2])
+        preds = tf.transpose(preds, [0, 3, 1, 2])
 
         # even the labels are not necessarily normalized
-        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]), 2, False)
+        epsilon = 1E-6
+        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + epsilon, 2, False)
+        preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + epsilon, 2, False)
 
         # performs a weighted sum to get center coordinates
         x_label = tf.reduce_sum(x_inds * labels, axis=[2,3])
@@ -736,7 +747,21 @@ class ModelFactory:
         squared_dists = x_dists + y_dists
         squared_dists = tf.transpose(squared_dists, [0, 2, 3, 1])
 
-        return tf.reduce_sum(squared_dists * cross_entropy)
+        # normalize, since these numbers are pretty large
+        squared_dists /= tf.cast(width, tf.float32) ** 2
+
+        # penalize only in spots that should be pretty close to 0
+        #diff = tf.maximum(preds - labels, 0)
+        """
+        epsilon = 1E-5
+        zeros = tf.zeros(tf.shape(labels))
+        ones = tf.ones(tf.shape(labels))
+        mask = tf.where(labels > epsilon, x = zeros, y = ones)
+        mask = tf.transpose(mask, [0, 2, 3, 1])
+        """
+
+        return tf.reduce_sum((0.1 + squared_dists) * cross_entropy)
+        #return tf.reduce_sum(mask * squared_dists * cross_entropy)
         #x_diff = (x_label - x_pred) / tf.cast(width, tf.float32)
         #y_diff = (y_label - y_pred) / tf.cast(height, tf.float32)
         #return tf.reduce_sum(tf.square(x_diff) + tf.square(y_diff))
@@ -770,47 +795,6 @@ class ModelFactory:
         x_dist = tf.squared_difference(x_label, x_pred) / tf.cast(width * width, tf.float32)
         y_dist = tf.squared_difference(y_label, y_pred) / tf.cast(height * height, tf.float32)
         return tf.reduce_sum(x_dist + y_dist)
-        
-    def pointMaskDistanceLoss(self, labels, preds):
-        """
-        We want to penalize mask output errors that are spatially further away from ground truth.
-        This is accomplished by multiplying the usual cross entropy loss with squared distance.
-        """
-        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
-        width = tf.shape(labels)[2]
-        height = tf.shape(labels)[1]
-        x_inds = tf.cast(tf.expand_dims(tf.range(0, width), 0), tf.float32)
-        y_inds = tf.cast(tf.expand_dims(tf.range(0, height), 1), tf.float32)
-
-        # move channels (corresponding to the coords dim) together with batch dim to avoid confusion
-        labels = tf.transpose(labels, [0, 3, 1, 2])
-
-        # even the labels are not necessarily normalized
-        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]), 2, False)
-
-        # performs a weighted sum to get center coordinates
-        x_label = tf.reduce_sum(x_inds * labels, axis=[2,3])
-        y_label = tf.reduce_sum(y_inds * labels, axis=[2,3])
-
-        # lots of massaging things into the right shape
-        x_inds = tf.expand_dims(x_inds, axis=0)
-        y_inds = tf.transpose(y_inds, [1, 0])
-        y_inds = tf.expand_dims(y_inds, axis=0)
-        x_label = tf.expand_dims(x_label, axis=-1)
-        y_label = tf.expand_dims(y_label, axis=-1)
-        
-        # get distances of each point to ground truth
-        x_dists = tf.square(x_inds - x_label)
-        y_dists = tf.square(y_inds - y_label)
-        x_dists = tf.expand_dims(x_dists, axis=-2)
-        y_dists = tf.expand_dims(y_dists, axis=-1)
-        squared_dists = x_dists + y_dists
-        squared_dists = tf.transpose(squared_dists, [0, 2, 3, 1])
-
-        return tf.reduce_sum(squared_dists * cross_entropy)
-        #x_diff = (x_label - x_pred) / tf.cast(width, tf.float32)
-        #y_diff = (y_label - y_pred) / tf.cast(height, tf.float32)
-        #return tf.reduce_sum(tf.square(x_diff) + tf.square(y_diff))
 
     """def maskSigmoidLoss(self, bboxes):
         def maskSigmoidLossHelper(labels, preds):

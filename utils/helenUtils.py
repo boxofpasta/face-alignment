@@ -30,8 +30,8 @@ class DatasetProps:
         self.im_path = im_path
         self.coords_path = coords_path
 
-def getNumCoords(coords_sparsity, ibug=True):
-    num_points = 68 if ibug else 194
+def getNumCoords(coords_sparsity, ibug_version=True):
+    num_points = 68 if ibug_version else 81
     return int(np.ceil(float(num_points) / coords_sparsity))
 
 def getAllData(path):
@@ -126,7 +126,7 @@ def processData(ims, coords, targ_im_width):
     """
     Parameters
     ----------
-    Both ims and coords should be dicts. A key exists in ims iff it exists in coords.
+    Both ims and coords should be dicts. The keys that we process will be the intersection of the dictionaries.
     ims and coords will be modified by reference.
 
     """
@@ -137,13 +137,20 @@ def processData(ims, coords, targ_im_width):
     if targ_im_width != -1:
         print('\n\nResizing samples ...')
         iter = 0
-        for name in ims:
+        names = utils.getKeysIntersection(ims, coords)
+        for name in names:
             if targ_im_width != -1:
                 im, single_coords = cropPair(ims[name], coords[name])
                 h_w_ratio = float(len(im)) / len(im[0])
                 im, single_coords = resizePair(im, single_coords, targ_im_width, targ_im_width * h_w_ratio)
                 coords[name] = single_coords
                 #coords[name] = normalizeCoords(single_coords, targ_im_width, targ_im_width * h_w_ratio)
+                # check if grayscale
+                if len(list(im.shape)) == 2 or im.shape[-1] == 1:
+                    im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
+                elif len(list(im.shape)) != 3 or im.shape[-1] != 3:
+                    raise ValueError('Unexpected image shape ' + str(im.shape))
+
                 ims[name] = im
             utils.informProgress(iter, len(ims))
             iter += 1
@@ -173,7 +180,9 @@ def serializeData(all_ims, all_coords, npy_path, ibug_version=False):
     except IOError or ValueError:
         names_set = set()
     iter = 0
-    for name in all_ims:
+    names = utils.getKeysIntersection(all_ims, all_coords)
+
+    for name in names:
         names_set.add(name)
         im = all_ims[name]
         coords = all_coords[name]
@@ -328,36 +337,34 @@ def readCoordsHelen(path, extension, sample_names, ibug_version=False):
     for fname in os.listdir(path):
         if fname.endswith(extension):
             lines = open(path + '/' + fname).readlines()
-            if not ibug_version:
-                key = lines[0].strip()
-                if sample_names == None or key in allowed_samples:
-                    cur_labels = []
-                    for i in range(1, len(lines)):
-                        coords = []
-                        for s in lines[i].split():
-                            if utils.isNumber(s):
-                                coords.append(float(s) - 1.0)
-                        
-                        if len(coords) == 2:
+            key = fname[:-len(extension)]
+            if sample_names == None or key in allowed_samples:
+                cur_labels = []
 
-                            # want y, x because tensorflow likes it this way
-                            cur_labels.append(list(reversed(coords)))
-                    labels[key] = cur_labels
-            else:
-                key = fname[:-len(extension)]
-                if sample_names == None or key in allowed_samples:
-                    cur_labels = []
+                if ibug_version:
                     for i in range(3, len(lines)-1):
                         coords = [float(s) - 1.0 for s in lines[i].split()]
 
                         # want y, x because tensorflow likes it this way
                         cur_labels.append(list(reversed(coords)))
                     labels[key] = cur_labels
+                else:
+                    for i in range(3, len(lines)-3):
+                        coords = [float(s) - 1.0 for s in lines[i].split()]
+
+                        # want y, x because tensorflow likes it this way
+                        cur_labels.append(list(reversed(coords)))
+
+                    # facebox as the last 2 coordinates
+                    vals = lines[-1].split()[1:]
+                    cur_labels.append([vals[0], vals[1]])
+                    cur_labels.append([vals[2], vals[3]])
+                    cur_labels = np.array(cur_labels).astype(np.float32)
+                    labels[key] = cur_labels
     return labels
 
-def getLipCoords(coords, max_x, flip_x=False):
+def getLipCoords(coords, max_x, flip_x=False, ibug_version=True):
     """
-    Only works for the ibug annotated version currently.
     Parameters
     ----------
     coords: 
@@ -366,17 +373,30 @@ def getLipCoords(coords, max_x, flip_x=False):
         If true, coordinates will correspond to image with with x-axis flipped. 
         Note that coordinate indices will still be following the same order as the original points.
     """
-    if flip_x:
-        c = np.copy(coords[48:60])
-        c[:,1] = float(max_x) - c[:,1]
-        c[0], c[6] = c[6], c[0].copy()
-        c[1], c[5] = c[5], c[1].copy()
-        c[2], c[4] = c[4], c[2].copy()
-        c[11], c[7] = c[7], c[11].copy()
-        c[10], c[8] = c[8], c[10].copy()
-        return c
+    if ibug_version:
+        if flip_x:
+            c = np.copy(coords[48:60])
+            c[:,1] = float(max_x) - c[:,1]
+            c[0], c[6] = c[6], c[0].copy()
+            c[1], c[5] = c[5], c[1].copy()
+            c[2], c[4] = c[4], c[2].copy()
+            c[11], c[7] = c[7], c[11].copy()
+            c[10], c[8] = c[8], c[10].copy()
+            return c
+        return coords[48:60]
 
-    return coords[48:60]
+    else:
+        if flip_x:
+            c = np.copy(coords[28:41])
+            c[:,1] = float(max_x) - c[:,1]
+            c[0], c[6] = c[6], c[0].copy()
+            c[1], c[5] = c[5], c[1].copy()
+            c[2], c[4] = c[4], c[2].copy()
+            c[12], c[7] = c[7], c[12].copy()
+            c[11], c[8] = c[8], c[11].copy()
+            c[10], c[9] = c[9], c[10].copy()
+            return c
+        return coords[28:41]
 
 def getLipLineMask(lip_coords, in_shape, out_shape):
     """
@@ -429,8 +449,8 @@ def getLipLineMask(lip_coords, in_shape, out_shape):
         rr, cc, val = line_aa(y_new_bot[i], x_new[i], y_new_bot[i+1], x_new[i+1])
         img[rr, cc] = val * 255
 
-    kernel_width = int(0.005 * len(img[0]))
-    kernel_height = int(0.005 * len(img))
+    kernel_width = int(0.007 * len(img[0]))
+    kernel_height = int(0.007 * len(img))
     kernel = np.ones((kernel_width, kernel_height))
     img = cv2.dilate(img, kernel, iterations=1)
 

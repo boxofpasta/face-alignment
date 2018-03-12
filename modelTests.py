@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import cv2
-import dlib
+#import dlib
 import os
 import sys
 
@@ -189,14 +189,18 @@ def tryPointMaskerDilatedOnSamples(model):
             masks = getNormalizedMasksFromImage(model, im)
             coords = utils.getCoordsFromPointMasks(masks, width, height, 'mean')
             max_coords = utils.getCoordsFromPointMasks(masks, width, height, 'max')
+
+            #for i in range(len(masks)):
+            #    utils.visualizeMask 
+            #    utils.visualizeCoords(, [[y_avg, x_avg]])
             """masks /= np.max(masks, axis=[1,2])
             summed = np.sum(masks, axis=0)
             summed = cv2.resize(summed, (height, width))
             summed = np.minimum(1, summed)
             """
             masks = np.moveaxis(masks, 0, -1)
-            utils.visualizeCoords(im, coords)
             #utils.visualizeCoordMasks(im, masks)
+            utils.visualizeCoords(im, coords)
             #utils.visualizeCoords(im, np.concatenate([max_coords, coords]), special_indices=np.arange(0, len(coords)))
 
 def tryPointMasker(model, batch_generator, sample_names=None):
@@ -358,8 +362,8 @@ def videoTest(model):
     num_frames = 0
     start = time.clock()
     im_len = 640
-    face_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_frontalface_default.xml')
-    predictor = dlib.shape_predictor('downloads/dlib/shape_predictor_68_face_landmarks.dat')
+    #face_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_frontalface_default.xml')
+    #predictor = dlib.shape_predictor('downloads/dlib/shape_predictor_68_face_landmarks.dat')
     
     #eye_cascade = cv2.CascadeClassifier('downloads/haarcascades/haarcascade_eye.xml')
     while(True):
