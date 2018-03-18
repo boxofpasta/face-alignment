@@ -156,3 +156,6 @@ loss: 6022.6358 - pointMaskDistance: 0.1165 - val_loss: 6152.5966 - val_pointMas
 
 # concat model with mask stddev=0.25
 loss: 12588.3353 - pointMaskDistance: 0.0594 - val_loss: 12686.1874 - val_pointMaskDistance:0.0746
+
+# concat model with mask sidelen = 112 (instead of 56 as before), mask stddev=0.2
+loss: 26869.0368 - pointMaskDistance: 0.1824 - val_loss: 27148.4124 - val_pointMaskDistance: 0.1328

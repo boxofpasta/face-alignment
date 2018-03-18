@@ -34,8 +34,8 @@ class ModelFactory:
         self.im_height = 224
         self.coords_sparsity = 1
         self.num_coords = helenUtils.getNumCoords(self.coords_sparsity, ibug_version=ibug_version)
-        self.mask_side_len = 56
-        self.epsilon = 1E-5
+        self.mask_side_len = 28
+        self.epsilon = 1E-8
         self.custom_objects = {
             'squaredDistanceLoss': self.squaredDistanceLoss, 
             'pointMaskSoftmaxLoss': self.pointMaskSoftmaxLoss,
@@ -58,7 +58,9 @@ class ModelFactory:
             'StopGradientLayer': layerUtils.StopGradientLayer,
             'pointMaskDistanceLoss': self.pointMaskDistanceLoss,
             'pointMaskDistance': self.pointMaskDistance,
-            'pointMaskSigmoidDistanceLoss': self.pointMaskSigmoidDistanceLoss
+            'pointMaskSigmoidDistanceLoss': self.pointMaskSigmoidDistanceLoss,
+            'TileMultiply': layerUtils.TileMultiply,
+            'TileSubtract': layerUtils.TileSubtract
         }
 
     def getSaved(self, path, frozen=False):
@@ -143,117 +145,6 @@ class ModelFactory:
         x = Dense(units=4, activation='linear')(x)
         model = Model(inputs=base_model.input, outputs=x)
         model.compile(loss=self.scaledSquaredDistanceBboxLoss, optimizer='adam')
-        return model   
-
-    def getPointMaskerSmall(self):
-        im_shape = (self.im_width, self.im_height, 3)
-
-        # lip only for now
-        l = self.mask_side_len
-        num_coords = 12 
-        img_input = Input(shape=im_shape)
-
-        # different resolutions. 
-        # we could also just downsample directly here but doing it externally gives better control.
-        label_masks = [
-            Input(shape=(l, l, num_coords)),
-            Input(shape=(l/2, l/2, num_coords)),
-            Input(shape=(l/4, l/4, num_coords)),
-            #Input(shape=(l/8, l/8, num_coords))
-        ]
-
-        z = []
-
-        # at different resolutions
-        preds = []
-
-        # 224x224
-        x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
-        #x = MaxPool2D()(x)
-
-        # 112x112
-        b = layerUtils.StopGradientLayer()(x)
-        z.append(layerUtils.depthwiseConvBlock(b, 32, num_coords))
-        x = layerUtils.depthwiseConvBlock(x, 32, 64, down_sample=True)
-        #x = layerUtils.depthwiseConvBlock(x, 64, 64)
-        #x = MaxPool2D()(x)
-
-        # 56x56
-        b = layerUtils.StopGradientLayer()(x)
-        z.append(layerUtils.depthwiseConvBlock(b, 64, num_coords))
-        x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
-        #x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        #x = MaxPool2D()(x)
-        
-        # 28x28
-        b = layerUtils.StopGradientLayer()(x)
-        z.append(layerUtils.depthwiseConvBlock(b, 128, num_coords))
-        x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
-        #x = layerUtils.depthwiseConvBlock(x, 256, 256)
-        #x = MaxPool2D()(x)
-
-        # 14x14
-        x = layerUtils.depthwiseConvBlock(x, 256, 64)
-        x = layerUtils.depthwiseConvBlock(x, 64, num_coords)
-        x = layerUtils.depthwiseConvBlock(x, num_coords, num_coords, kernel_size=(5,5), final_activation='linear')
-        z.append(x)
-
-        losses = []
-        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l/4)([label_masks[-1], x]))
-        x = Activation('sigmoid')(x)
-        preds.append(x)
-        
-        # up-sampling chain
-        method = tf.image.ResizeMethod.BILINEAR
-        x = layerUtils.Resize(28, method)(x)
-        x = layerUtils.StopGradientLayer()(x)
-        x = Multiply()([x, z[2]])
-        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l/2)([label_masks[-2], x]))
-        x = Activation('sigmoid')(x)
-        preds.append(x)
-
-        x = layerUtils.Resize(56, method)(x)
-        x = layerUtils.StopGradientLayer()(x)
-        x = Multiply()([x, z[1]])
-        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks[-3], x]))
-        x = Activation('sigmoid')(x)
-        preds.append(x)
-
-        """
-        x = layerUtils.Resize(112, method)(x)
-        x = layerUtils.StopGradientLayer()(x)
-        x = Multiply()([x, z[0]])
-        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = DepthwiseConvolution2D(int(num_coords), (3,3), strides=(1,1), padding='same', use_bias=False)(x)
-        x = BatchNormalization()(x)
-        losses.append(layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks[-4], x]))
-        x = Activation('sigmoid')(x)
-        preds.append(x)
-        """
-
-        # they both end up being from highest to lowest resolution, same order as z
-        losses.reverse()
-        preds.reverse()
-        losses[0] = Lambda(lambda x: x, name='f0')(losses[0])
-        losses[1] = Lambda(lambda x: x, name='f1')(losses[1])
-        losses[2] = Lambda(lambda x: x, name='f2')(losses[2])
-        #losses[3] = Lambda(lambda x: x, name='f3')(losses[3])
-        
-        model = Model(
-            inputs=[img_input] + label_masks, 
-            outputs=[losses[0], losses[1], losses[2], preds[1], preds[-1]]
-        )
-        optimizer = optimizers.adam(lr=1E-2)
-        model.compile(loss=[self.identityLoss, self.identityLoss, self.identityLoss, None, None], optimizer=optimizer)
         return model
 
     def getPointMaskerAttention(self):
@@ -265,36 +156,59 @@ class ModelFactory:
         x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         # 112x112
 
-        x = layerUtils.depthwiseConvBlock(x, 32, 64, down_sample=True)
+        x = MaxPool2D()(x)
         # 56x56
 
+        x = layerUtils.depthwiseConvBlock(x, 32, 64)
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
-        x = layerUtils.depthwiseConvBlock(x, 64, 64)
-        z = x
-        z = layerUtils.depthwiseConvBlock(z, 64, 64)
-        z = layerUtils.depthwiseConvBlock(z, 64, 128, final_activation='leaky_relu')
 
-        x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
+        x = MaxPool2D()(x)
         # 28x28
+
+        x = layerUtils.depthwiseConvBlock(x, 64, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+
+        z = layerUtils.depthwiseConvBlock(x, 128, 128)
+        z = layerUtils.depthwiseConvBlock(z, 128, 4)
+        z = Conv2DTranspose(
+            4, kernel_size=(3, 3),
+            strides=(2, 2),
+            activation='linear',
+            padding='same')(z)
+        # 56x56
 
         x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
         # 14x14
 
+        #x = layerUtils.depthwiseConvBlock(x, 256, 256)
+        #x = layerUtils.depthwiseConvBlock(x, 256, 512, down_sample=True)
+
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
-        #x = layerUtils.depthwiseConvBlock(x, 256, 256)
-        x = layerUtils.depthwiseConvBlock(x, 256, 8, final_activation='tanh')
+        x = layerUtils.depthwiseConvBlock(x, 256, 16, final_activation='leaky_relu')
+
+        #x = layerUtils.depthwiseConvBlock(x, 256, 512, dilation_rate=[4,4])
+        #x = layerUtils.depthwiseConvBlock(x, 512, 16, final_activation='tanh')
         
         method = tf.image.ResizeMethod.BILINEAR
         #x = layerUtils.Resize(28, method)(x)
         #x = layerUtils.depthwiseConvBlock(x, num_coords, num_coords, final_activation='tanh')
-        x = layerUtils.Resize(56, method)(x)
-        x = layerUtils.TileMultiply(128 / 8)([x, z])
+        #x = layerUtils.Resize(112, method)(x)
+        x = Conv2DTranspose(
+            16, kernel_size=(3, 3),
+            strides=(4, 4),
+            activation='linear',
+            padding='same')(x)
+
+        #x = layerUtils.TileMultiply(16 / 4)([z, x])
+        x = layerUtils.TileSubtract(16 / 4)([z, x])
         #x = Multiply()([x, z])
         # 56x56
 
-        x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, kernel_size=(5,5), final_activation='linear')
+        #x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 16, 64)
+        x = layerUtils.depthwiseConvBlock(x, 64, 16, final_activation='leaky_relu')
+        x = layerUtils.depthwiseConvBlock(x, 16, num_coords, kernel_size=(7,7), final_activation='linear')
         pred = x
         
         model = Model(
@@ -354,7 +268,85 @@ class ModelFactory:
         model.compile(loss=[self.pointMaskSigmoidLoss], metrics=[self.pointMaskDistance], optimizer=optimizer)
         return model
 
-    def getPointMaskerConcat(self):
+
+    def getPointMaskerSmall(self, in_side_len, out_side_len, in_channels, out_channels):
+        # This one does not compile on its own
+        im_shape = (in_side_len, in_side_len, in_channels)
+        out_shape = (out_side_len, out_side_len, out_channels)
+
+        x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
+        x = layerUtils.depthwiseConvBlock(x, 32, 128, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, out_channels, final_activation='linear')
+        x = layerUtils.Resize(out_side_len)(x)
+        model = Model(inputs=img_input, outputs=x)
+        return model
+        
+
+    def getPointMaskerConcatRefined(self):
+
+        # outerlip only for now
+        l = self.mask_side_len
+        num_coords = 13
+        base_model = self.getPointMaskerConcat(compile=False)
+        img_input = base_model.input
+        base_preds = base_model.output
+        base_preds_normalized = Activation('sigmoid')(base_preds)
+
+        # get crop for each coordinate
+        mask_means = layerUtils.MaskMean()(base_preds_normalized)
+        boxes = layerUtils.BoxesFromCenters(28)(mask_means)
+
+        # slice and join to a separate refine model for each coordinate
+        refined_coords = []
+        for i in range(num_coords):
+            box = Lambda( lambda x: x[:,i,:] )
+            crop = layerUtils.CropAndResize(28)([base_model.input, box])
+            refine_model = self.getPointMaskerSmall(28, 28, 3, 1)
+            refine_model.input = crop
+            refined_coords.append(refine_model.output)
+
+        refined_preds = Concatenate()(refined_coords)
+        all_preds = Concatenate()([base_preds, refined_preds])
+        model = Model(inputs=base_model.input, outputs=[base_preds, all_preds])
+        
+        #optimizer = optimizers.adam(lr=6E-2)
+        optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
+        model.compile(
+            loss=[ self.pointMaskSigmoidLoss, self.cascadedPointMaskSigmoidLoss ], 
+            metrics=[ self.pointMaskDistance ], 
+            optimizer=optimizer
+        )
+        return model
+
+    def cascadedPointMaskSigmoidLoss(self, y_true, y_pred):
+        num_coords = 13
+
+        # split the preds up into their component parts (dammit keras!)
+        base_preds = Lambda(lambda x: x[:,:,:,:13])
+        refined_preds = Lambda(lambda x: x[:,:,:,12:])
+
+        # get crops;
+        # this is actually repetitive code from the model architecture, 
+        # blame keras for inflexible loss function arguments
+        base_preds_normalized = Activation('sigmoid')(base_preds)
+        mask_means = layerUtils.MaskMean()(base_preds_normalized)
+        boxes = layerUtils.BoxesFromCenters(28)(mask_means)
+
+        label_crops = []
+        for i in range(num_coords):
+            box = Lambda( lambda x: x[:,i,:] )
+            label_mask = Lambda( lambda x: x[:,:,:,i] )
+            label_crop = layerUtils.CropAndResize(28)([label_mask, box])
+            label_crops.append(label_crop)
+
+        labels = Concatenate()(label_crops)
+        utils.printTensorShape(labels)
+        return self.pointMaskDistanceLoss(labels, preds)
+
+
+    def getPointMaskerConcat(self, compile=True):
         im_shape = (self.im_width, self.im_height, 3)
 
         # lip only for now
@@ -373,11 +365,11 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
 
         # 56x56
-        z.append(layerUtils.depthwiseConvBlock(x, 64, 64))
         x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
         
         # 28x28
         #z.append(layerUtils.depthwiseConvBlock(b, 128, 128))
+        z.append(layerUtils.depthwiseConvBlock(x, 128, 128))
         x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
 
         # 14x14
@@ -390,11 +382,14 @@ class ModelFactory:
 
         method = tf.image.ResizeMethod.BILINEAR
         x = layerUtils.depthwiseConvBlock(x, 256, 128)
-        x = layerUtils.Resize(56, method)(x)
+        x = layerUtils.Resize(28, method)(x)
         
-        z[0] = layerUtils.depthwiseConvBlock(z[0], 64, 64)
+        z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 128)
         x = Concatenate()([x, z[0]])
-        x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 256, 32)
+
+        x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
+        #x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
 
         #loss = layerUtils.PointMaskSoftmaxLossLayer(l)([label_masks, x])
@@ -409,9 +404,12 @@ class ModelFactory:
         )
         
         #optimizer = optimizers.adam(lr=6E-2)
-        optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
-        model.compile(loss=[ self.pointMaskSigmoidLoss ], metrics=[ self.pointMaskDistance ], optimizer=optimizer)
+        if compile:
+            optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
+            model.compile(loss=[ self.pointMaskSigmoidLoss ], metrics=[ self.pointMaskDistance ], optimizer=optimizer)
         return model
+
+        
 
     def getPointMasker(self):
         im_shape = (self.im_width, self.im_height, 3)
@@ -711,7 +709,6 @@ class ModelFactory:
         """
         We want to penalize mask output errors that are spatially further away from ground truth.
         This is accomplished by multiplying the usual cross entropy loss with squared distance.
-        Furthermore, a penalty will only be applied if the predicted mask is of larger value than the actual one.
         """
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)
         width = tf.shape(labels)[2]
@@ -724,9 +721,8 @@ class ModelFactory:
         preds = tf.transpose(preds, [0, 3, 1, 2])
 
         # even the labels are not necessarily normalized
-        epsilon = 1E-6
-        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + epsilon, 2, False)
-        preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + epsilon, 2, False)
+        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + self.epsilon, 2, False)
+        preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + self.epsilon, 2, False)
 
         # performs a weighted sum to get center coordinates
         x_label = tf.reduce_sum(x_inds * labels, axis=[2,3])
@@ -775,16 +771,16 @@ class ModelFactory:
         preds = tf.sigmoid(preds)
         width = tf.shape(labels)[2]
         height = tf.shape(labels)[1]
-        x_inds = tf.cast(tf.expand_dims(tf.range(0, width), 0), tf.float32)
-        y_inds = tf.cast(tf.expand_dims(tf.range(0, height), 1), tf.float32)
+        x_inds = tf.cast(tf.expand_dims(tf.range(0, width), 0), tf.float32) / tf.cast(width, tf.float32)
+        y_inds = tf.cast(tf.expand_dims(tf.range(0, height), 1), tf.float32) / tf.cast(height, tf.float32)
 
         # move channels (corresponding to the coords dim) together with batch dim to avoid confusion
         labels = tf.transpose(labels, [0, 3, 1, 2])
         preds = tf.transpose(preds, [0, 3, 1, 2])
 
         # even the labels are not necessarily normalized
-        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]), 2, False)
-        preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]), 2, False)
+        labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + self.epsilon, 2, False)
+        preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + self.epsilon, 2, False)
 
         # performs a weighted sum to get center coordinates
         x_label = tf.reduce_sum(x_inds * labels, axis=[2,3])
@@ -792,8 +788,8 @@ class ModelFactory:
         x_pred = tf.reduce_sum(x_inds * preds, axis=[2,3])
         y_pred = tf.reduce_sum(y_inds * preds, axis=[2,3])
 
-        x_dist = tf.squared_difference(x_label, x_pred) / tf.cast(width * width, tf.float32)
-        y_dist = tf.squared_difference(y_label, y_pred) / tf.cast(height * height, tf.float32)
+        x_dist = tf.squared_difference(x_label, x_pred)
+        y_dist = tf.squared_difference(y_label, y_pred)
         return tf.reduce_sum(x_dist + y_dist)
 
     """def maskSigmoidLoss(self, bboxes):

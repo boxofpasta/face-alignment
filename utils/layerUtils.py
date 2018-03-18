@@ -79,6 +79,90 @@ class TileMultiply(Layer):
         base_config = super(TileMultiply, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+class TileSubtract(Layer):
+
+    def __init__(self, multiple, **kwargs):
+        self.multiple = multiple
+        super(TileSubtract, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        x, z = inputs
+        x_tiled = tf.tile(x, [1, 1, 1, self.multiple])
+        return x_tiled - z
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[1]
+
+    def get_config(self):
+        config = {'multiple': self.multiple}
+        base_config = super(TileSubtract, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class MaskMean(Layer):
+
+    def __init__(self, **kwargs):
+        super(MaskMean, self).__init__(**kwargs)
+
+    def call(self, masks):
+        width = tf.shape(masks)[2]
+        height = tf.shape(masks)[1]
+        x_inds = tf.cast(tf.expand_dims(tf.range(0, width), 0), tf.float32) / tf.cast(width, tf.float32)
+        y_inds = tf.cast(tf.expand_dims(tf.range(0, height), 1), tf.float32) / tf.cast(height, tf.float32)
+
+        # move channels (corresponding to the coords dim) together with batch dim to avoid confusion
+        epsilon = 1E-6
+        masks = tf.transpose(masks, [0, 3, 1, 2])
+        masks /= utils.expandDimsRepeatedly(tf.reduce_sum(masks, axis=[2,3]) + epsilon, 2, False)
+
+        # performs a weighted sum to get center coordinates
+        x_cen = tf.reduce_sum(x_inds * labels, axis=[2,3])
+        y_cen = tf.reduce_sum(y_inds * labels, axis=[2,3])
+        x_cen = tf.expand_dims(x_label, axis=-1)
+        y_cen = tf.expand_dims(y_label, axis=-1)
+
+        # [batch, coords, 2]
+        centers = tf.concat([y_cen, x_cen], axis=-1)
+        utils.printTensorShape(x_label)
+        utils.printTensorShape(centers)
+        return centers
+
+    def compute_output_shape(self, input_shape):
+        return tuple(input_shape[0:2] + [2])
+
+    def get_config(self):
+        config = {}
+        base_config = super(MaskMean, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class BoxesFromCenters(Layer):
+
+    def __init__(self, side_len, **kwargs):
+        self.side_len = side_len
+        super(BoxesFromCenters, self).__init__(**kwargs)
+
+    def call(self, centers):
+
+        # centers should follow [y, x]
+        # [batch, num_coords, 2]
+        offset = side_len / 2.0
+        offsets = tf.constant([-offset, -offset, offset, offset])
+        boxes = tf.concat([centers, centers], axis=-1)
+
+        utils.printTensorShape(boxes)
+        boxes += offsets
+        utils.printTensorShape(boxes)
+        return boxes
+
+    def compute_output_shape(self, input_shape):
+        return tuple(input_shape[0:2] + [4])
+
+    def get_config(self):
+        config = {}
+        base_config = super(BoxesFromCenters, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+    
     
 class CropAndResize(Layer):
 
@@ -88,6 +172,7 @@ class CropAndResize(Layer):
         super(CropAndResize, self).__init__(**kwargs)
 
     def call(self, inputs):
+        # bboxes should follow [y1, x1, y2, x2]
         x, boxes = inputs
 
         # not sure if having a gradient flow through boxes makes sense

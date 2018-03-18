@@ -318,7 +318,7 @@ class PointMaskBatchGenerator(BatchGenerator):
     def __init__(self, names, path, mask_side_len, **kwargs):
         BatchGenerator.__init__(self, names, path, **kwargs)
         self.mask_side_len = mask_side_len
-        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.02)
+        self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.03)
 
     def getTrainingPair(self, im, coords, augment=False):
 
@@ -338,12 +338,12 @@ class PointMaskBatchGenerator(BatchGenerator):
 
         if augment:
             # random scale and shift
-            rect = utils.getRandomlyExpandedBbox(square, 0.06, 0.9)
-            max_shift = 0.3 * (square[2] - square[0])
+            rect = utils.getRandomlyExpandedBbox(square, -0.2, 0.3)
+            max_shift = 0.1 * (square[2] - square[0])
             shifts = max_shift * np.random.rand(2)
             rect = np.array(utils.getShiftedBbox(rect, shifts)).astype(int)
         else:
-            rect = utils.getExpandedBbox(square, 0.4, 0.4)
+            rect = utils.getExpandedBbox(square, 0.0, 0.0)
 
         # make sure that rect does not go beyond image borders
         rect = utils.getClippedBbox(im, rect)
@@ -353,6 +353,7 @@ class PointMaskBatchGenerator(BatchGenerator):
         coords[:,1] -= rect[1]
         im = utils.getCropped(im, rect)
 
+        """
         # brightness and saturation adjustments
         if augment:
             rand_v_delta = (np.random.rand() - 0.5) * 0.2 * 255
@@ -364,6 +365,7 @@ class PointMaskBatchGenerator(BatchGenerator):
             im_hsv = np.clip(im_hsv, 0, 255)
             im_hsv = im_hsv.astype(np.uint8)
             im = cv2.cvtColor(im_hsv, cv2.COLOR_HSV2RGB)
+        """
 
         # just the lip coords for now
         # flip

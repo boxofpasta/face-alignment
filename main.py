@@ -134,22 +134,22 @@ if __name__ == '__main__':
     now = datetime.datetime.now()
     #time_str = '2018-03-01:04:33' 
     time_str = now.strftime("%m-%d:%H:%M")
-    model_name = 'point_masker_attention'
-    #model_name = 'point_masker_concat'
+    #model_name = 'point_masker_attention'
+    model_name = 'point_masker_concat'
     model_folder = 'models/' + model_name + '/' + time_str
     model_path = model_folder + '/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/03-10:22:26/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-11:15:17/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
+    model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/model.h5'
     #model_path = "/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/2018-03-06:20:17/model.h5"
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerConcat()
     #model = factory.getPointMaskerDilated()
-    model = factory.getPointMaskerAttention()
+    #model = factory.getPointMaskerAttention()
     #model = factory.getPointMaskerDilated()
     #path = 'models/point_masker_attention/2018-03-06:00:14/model.h5'
-    #model = factory.getSaved(model_path)
+    model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     model.summary()
 
