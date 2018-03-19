@@ -36,6 +36,7 @@ class ModelFactory:
         self.num_coords = helenUtils.getNumCoords(self.coords_sparsity, ibug_version=ibug_version)
         self.mask_side_len = 28
         self.epsilon = 1E-8
+        self.ibug_version = ibug_version
         self.custom_objects = {
             'squaredDistanceLoss': self.squaredDistanceLoss, 
             'pointMaskSoftmaxLoss': self.pointMaskSoftmaxLoss,
@@ -304,8 +305,8 @@ class ModelFactory:
             box = Lambda( lambda x: x[:,i,:] )
             crop = layerUtils.CropAndResize(28)([base_model.input, box])
             refine_model = self.getPointMaskerSmall(28, 28, 3, 1)
-            refine_model.input = crop
-            refined_coords.append(refine_model.output)
+            output = refine_model(crop)
+            refined_coords.append(output)
 
         refined_preds = Concatenate()(refined_coords)
         all_preds = Concatenate()([base_preds, refined_preds])
@@ -332,8 +333,17 @@ class ModelFactory:
         # blame keras for inflexible loss function arguments
         base_preds_normalized = Activation('sigmoid')(base_preds)
         mask_means = layerUtils.MaskMean()(base_preds_normalized)
+        true_means = layerUtils.MaskMean()(y_true)
         boxes = layerUtils.BoxesFromCenters(28)(mask_means)
 
+        # avoid penalizing refined mask when the initial estimate is not even close to truth
+        sqrd_diffs = tf.squared_difference(mask_means, true_means)
+        dists = tf.sqrt(tf.reduce_sum(sqrd_diffs, axis=-1))
+        thresh = 0.9 * 28.0 / self.im_width
+        loss_mask = tf.where(dists > thresh, 1.0, 0.0)
+        loss_mask = tf.expand_dims(loss_mask, 1)
+        loss_mask = tf.expand_dims(loss_mask, 1)
+        
         label_crops = []
         for i in range(num_coords):
             box = Lambda( lambda x: x[:,i,:] )
@@ -342,7 +352,13 @@ class ModelFactory:
             label_crops.append(label_crop)
 
         labels = Concatenate()(label_crops)
+
         utils.printTensorShape(labels)
+        utils.printTensorShape(preds)
+        utils.printTensorShape(loss_mask)
+        labels *= loss_mask
+        preds *= loss_mask
+        
         return self.pointMaskDistanceLoss(labels, preds)
 
 
