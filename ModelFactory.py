@@ -274,18 +274,20 @@ class ModelFactory:
         # This one does not compile on its own
         im_shape = (in_side_len, in_side_len, in_channels)
         out_shape = (out_side_len, out_side_len, out_channels)
+        img_input = Input(im_shape)
 
-        x = Convolution2D(32, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
-        x = layerUtils.depthwiseConvBlock(x, 32, 128, down_sample=True)
-        x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        x = layerUtils.depthwiseConvBlock(x, 128, 128)
-        x = layerUtils.depthwiseConvBlock(x, 128, out_channels, final_activation='linear')
-        x = layerUtils.Resize(out_side_len)(x)
+        method = tf.image.ResizeMethod.BILINEAR
+        x = Convolution2D(16, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
+        x = layerUtils.depthwiseConvBlock(x, 16, 64, down_sample=True)
+        x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        x = layerUtils.depthwiseConvBlock(x, 64, out_channels, final_activation='linear')
+        x = layerUtils.Resize(out_side_len, method)(x)
         model = Model(inputs=img_input, outputs=x)
         return model
         
 
-    def getPointMaskerConcatRefined(self):
+    def getPointMaskerConcatCascaded(self):
 
         # outerlip only for now
         l = self.mask_side_len
@@ -302,7 +304,7 @@ class ModelFactory:
         # slice and join to a separate refine model for each coordinate
         refined_coords = []
         for i in range(num_coords):
-            box = Lambda( lambda x: x[:,i,:] )
+            box = Lambda( lambda x: x[:,i,:] )(boxes)
             crop = layerUtils.CropAndResize(28)([base_model.input, box])
             refine_model = self.getPointMaskerSmall(28, 28, 3, 1)
             output = refine_model(crop)
@@ -315,8 +317,8 @@ class ModelFactory:
         #optimizer = optimizers.adam(lr=6E-2)
         optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
         model.compile(
-            loss=[ self.pointMaskSigmoidLoss, self.cascadedPointMaskSigmoidLoss ], 
-            metrics=[ self.pointMaskDistance ], 
+            loss=[ self.pointMaskSigmoidDistanceLoss, self.cascadedPointMaskSigmoidLoss ], 
+            #metrics=[ self.pointMaskDistance ], 
             optimizer=optimizer
         )
         return model
@@ -325,8 +327,9 @@ class ModelFactory:
         num_coords = 13
 
         # split the preds up into their component parts (dammit keras!)
-        base_preds = Lambda(lambda x: x[:,:,:,:13])
-        refined_preds = Lambda(lambda x: x[:,:,:,12:])
+        base_preds = Lambda(lambda x: x[:,:,:,:13])(y_pred)
+        base_preds = tf.stop_gradient(base_preds)
+        refined_preds = Lambda(lambda x: x[:,:,:,13:])(y_pred)
 
         # get crops;
         # this is actually repetitive code from the model architecture, 
@@ -340,26 +343,22 @@ class ModelFactory:
         sqrd_diffs = tf.squared_difference(mask_means, true_means)
         dists = tf.sqrt(tf.reduce_sum(sqrd_diffs, axis=-1))
         thresh = 0.9 * 28.0 / self.im_width
-        loss_mask = tf.where(dists > thresh, 1.0, 0.0)
+        loss_mask = tf.where(dists < thresh, tf.ones(tf.shape(dists)), tf.zeros(tf.shape(dists)))
         loss_mask = tf.expand_dims(loss_mask, 1)
-        loss_mask = tf.expand_dims(loss_mask, 1)
-        
+        loss_mask = tf.expand_dims
         label_crops = []
         for i in range(num_coords):
-            box = Lambda( lambda x: x[:,i,:] )
-            label_mask = Lambda( lambda x: x[:,:,:,i] )
+            box = Lambda( lambda x: x[:,i,:] )(boxes)
+            label_mask = Lambda( lambda x: x[:,:,:,i] )(y_true)
+            label_mask = tf.expand_dims(label_mask, axis=-1)
             label_crop = layerUtils.CropAndResize(28)([label_mask, box])
             label_crops.append(label_crop)
 
         labels = Concatenate()(label_crops)
-
-        utils.printTensorShape(labels)
-        utils.printTensorShape(preds)
-        utils.printTensorShape(loss_mask)
         labels *= loss_mask
-        preds *= loss_mask
-        
-        return self.pointMaskDistanceLoss(labels, preds)
+        refined_preds *= loss_mask
+
+        return self.pointMaskDistanceLoss(labels, refined_preds)
 
 
     def getPointMaskerConcat(self, compile=True):

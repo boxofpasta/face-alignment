@@ -135,21 +135,22 @@ if __name__ == '__main__':
     #time_str = '2018-03-01:04:33' 
     time_str = now.strftime("%m-%d:%H:%M")
     #model_name = 'point_masker_attention'
-    model_name = 'point_masker_concat'
+    model_name = 'point_masker_cascaded'
     model_folder = 'models/' + model_name + '/' + time_str
     model_path = model_folder + '/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
-    model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/model.h5'
     #model_path = "/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/2018-03-06:20:17/model.h5"
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerConcat()
+    model = factory.getPointMaskerConcatCascaded()
     #model = factory.getPointMaskerDilated()
     #model = factory.getPointMaskerAttention()
     #model = factory.getPointMaskerDilated()
     #path = 'models/point_masker_attention/2018-03-06:00:14/model.h5'
-    model = factory.getSaved(model_path)
+    #model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     model.summary()
 
@@ -179,10 +180,17 @@ if __name__ == '__main__':
     all_train_names = all_names[split_val:]
     """
 
+    """
     train_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_train_names, train_path, factory.mask_side_len, 
                                                                    augment_on_generate=True, ibug_version=ibug_version)
     val_batch_generator = BatchGenerator.PointMaskBatchGenerator(all_val_names, val_path, factory.mask_side_len, 
                                                                    augment_on_generate=False, ibug_version=ibug_version)
+    """
+
+    train_batch_generator = BatchGenerator.PointMaskCascadedBatchGenerator(all_train_names, train_path, factory.mask_side_len,
+                                                                   factory.im_width, augment_on_generate=True, ibug_version=ibug_version)
+    val_batch_generator = BatchGenerator.PointMaskCascadedBatchGenerator(all_val_names, val_path, factory.mask_side_len, 
+                                                                   factory.im_width, augment_on_generate=False, ibug_version=ibug_version)
     #train_batch_generator = BatchGenerator.LineMaskBatchGenerator('data/train_ibug', 224)#factory.mask_side_len)
 
     """

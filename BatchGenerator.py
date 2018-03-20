@@ -389,14 +389,14 @@ class PointMaskBatchGenerator(BatchGenerator):
 
 class PointMaskCascadedBatchGenerator(BatchGenerator):
 
-    def __init__(self, names, path, mask_side_len, im_len, **kwargs):
+    def __init__(self, names, path, mask_side_len, hd_mask_side_len, **kwargs):
         BatchGenerator.__init__(self, names, path, **kwargs)
         self.mask_side_len = mask_side_len
-        self.im_len = im_len
+        self.hd_mask_side_len = hd_mask_side_len
         self.pdfs = utils.getGaussians(10000, self.mask_side_len, stddev=0.03)
 
         # hd for high definition
-        self.hd_pdfs = utils.getGaussians(10000, self.im_len, stddev=0.01)
+        self.hd_pdfs = utils.getGaussians(10000, self.hd_mask_side_len, stddev=0.01)
 
     def getTrainingPair(self, im, coords, augment=False):
 
@@ -466,7 +466,7 @@ class PointMaskCascadedBatchGenerator(BatchGenerator):
         hd_masks /= np.max(hd_masks, axis=(0,1))
 
         l = self.mask_side_len
-        hd_l = self.im_len
+        hd_l = self.hd_mask_side_len
         masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
         hd_masks = cv2.resize(hd_masks, (hd_l, hd_l), interpolation=cv2.INTER_AREA)
         return [im], [masks, hd_masks]

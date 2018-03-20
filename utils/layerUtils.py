@@ -116,19 +116,17 @@ class MaskMean(Layer):
         masks /= utils.expandDimsRepeatedly(tf.reduce_sum(masks, axis=[2,3]) + epsilon, 2, False)
 
         # performs a weighted sum to get center coordinates
-        x_cen = tf.reduce_sum(x_inds * labels, axis=[2,3])
-        y_cen = tf.reduce_sum(y_inds * labels, axis=[2,3])
-        x_cen = tf.expand_dims(x_label, axis=-1)
-        y_cen = tf.expand_dims(y_label, axis=-1)
+        x_cen = tf.reduce_sum(x_inds * masks, axis=[2,3])
+        y_cen = tf.reduce_sum(y_inds * masks, axis=[2,3])
+        x_cen = tf.expand_dims(x_cen, axis=-1)
+        y_cen = tf.expand_dims(y_cen, axis=-1)
 
         # [batch, coords, 2]
         centers = tf.concat([y_cen, x_cen], axis=-1)
-        utils.printTensorShape(x_label)
-        utils.printTensorShape(centers)
         return centers
 
     def compute_output_shape(self, input_shape):
-        return tuple(input_shape[0:2] + [2])
+        return tuple(input_shape[0:2] + (2,))
 
     def get_config(self):
         config = {}
@@ -146,20 +144,18 @@ class BoxesFromCenters(Layer):
 
         # centers should follow [y, x]
         # [batch, num_coords, 2]
-        offset = side_len / 2.0
+        offset = self.side_len / 2.0
         offsets = tf.constant([-offset, -offset, offset, offset])
         boxes = tf.concat([centers, centers], axis=-1)
 
-        utils.printTensorShape(boxes)
         boxes += offsets
-        utils.printTensorShape(boxes)
         return boxes
 
     def compute_output_shape(self, input_shape):
-        return tuple(input_shape[0:2] + [4])
+        return tuple(input_shape[0:2] + (4,))
 
     def get_config(self):
-        config = {}
+        config = {'side_len': self.side_len}
         base_config = super(BoxesFromCenters, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
     
