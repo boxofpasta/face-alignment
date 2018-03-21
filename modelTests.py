@@ -14,6 +14,41 @@ def normalizeMask(mask):
     mask = np.maximum(mask - np.mean(mask), 0)
     return mask / np.max(mask)
 
+def tryPointMaskerCascaded(model, batch_generator, sample_names=None):
+    if sample_names == None:
+        sample_names = batch_generator.all_names
+
+    for sample_name in sample_names:
+        inputs, _ = batch_generator.getPair(sample_name)
+        X, Y = batch_generator.getBatchFromNames([sample_name])
+        im = inputs[0]
+        print_str = 'sample name: ' + sample_name 
+        if batch_generator.isInValSet(sample_name):
+            print_str += ', from val set'
+        else:
+            print_str += ', from train set'
+
+        base_masks, refined_masks = getNormalizedMasksFromImage(model, im)
+        coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'mean')
+        max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
+
+        """
+        for i in range(len(refined_masks)):
+            plt.imshow(refined_masks[i])
+            plt.show()
+        """
+        plt.imshow(refined_masks[0])
+        plt.show()
+
+        """masks /= np.max(masks, axis=[1,2])
+        summed = np.sum(masks, axis=0)
+        summed = cv2.resize(summed, (height, width))
+        summed = np.minimum(1, summed)
+        """
+        masks = np.moveaxis(masks, 0, -1)
+        #utils.visualizeCoordMasks(im, masks)
+        utils.visualizeCoords(im, coords)
+
 def tryPointMaskerVanilla(model, batch_generator, sample_names=None):
     if sample_names == None:
         sample_names = batch_generator.all_names
@@ -172,6 +207,30 @@ def getNormalizedMasksFromImage(model, im):
     #labels = inputs[1]
     #labels = np.moveaxis(labels, -1, 0)
     preds = np.squeeze(outputs[0])
+    preds = utils.imSoftmax(preds)
+    preds = np.moveaxis(preds, -1, 0)
+    preds = [ normalizeMask(pred) for pred in preds]
+    return preds
+
+def getNormalizedCascadedMasksFromImage(model, im):
+    
+    im = im[:,:,0:3]
+    im = cv2.resize(im, (224, 224))
+    X = [np.array([im])]
+
+    #_1, _2, _3, _4, low_res, high_res = model.predict(feed_inputs, batch_size=32)
+    before = time.time()
+    outputs = model.predict_on_batch(X)
+    #print 'inference time: ' + str(time.time() - before) + ' seconds'
+    
+    #labels = inputs[1]
+    #labels = np.moveaxis(labels, -1, 0)
+    base_preds = getNormalizedMasksFromPred(outputs[0])
+    refined_preds = getNormalizedMasksFromPred(outputs[1])
+    return base_preds, refined_preds
+
+def getNormalizedMasksFromPred(preds):
+    preds = np.squeeze(preds)
     preds = utils.imSoftmax(preds)
     preds = np.moveaxis(preds, -1, 0)
     preds = [ normalizeMask(pred) for pred in preds]

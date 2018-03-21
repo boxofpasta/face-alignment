@@ -61,7 +61,11 @@ class ModelFactory:
             'pointMaskDistance': self.pointMaskDistance,
             'pointMaskSigmoidDistanceLoss': self.pointMaskSigmoidDistanceLoss,
             'TileMultiply': layerUtils.TileMultiply,
-            'TileSubtract': layerUtils.TileSubtract
+            'TileSubtract': layerUtils.TileSubtract,
+            'MaskMean': layerUtils.MaskMean,
+            'BoxesFromCenters': layerUtils.BoxesFromCenters,
+            'SliceBboxes': layerUtils.SliceBboxes,
+            'cascadedPointMaskSigmoidLoss': self.cascadedPointMaskSigmoidLoss,
         }
 
     def getSaved(self, path, frozen=False):
@@ -304,7 +308,7 @@ class ModelFactory:
         # slice and join to a separate refine model for each coordinate
         refined_coords = []
         for i in range(num_coords):
-            box = Lambda( lambda x: x[:,i,:] )(boxes)
+            box = layerUtils.SliceBboxes(i)(boxes)
             crop = layerUtils.CropAndResize(28)([base_model.input, box])
             refine_model = self.getPointMaskerSmall(28, 28, 3, 1)
             output = refine_model(crop)
@@ -318,7 +322,7 @@ class ModelFactory:
         optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
         model.compile(
             loss=[ self.pointMaskSigmoidDistanceLoss, self.cascadedPointMaskSigmoidLoss ], 
-            #metrics=[ self.pointMaskDistance ], 
+            # metrics=[ self.pointMaskDistance, self.zeroLoss ], 
             optimizer=optimizer
         )
         return model
@@ -327,9 +331,9 @@ class ModelFactory:
         num_coords = 13
 
         # split the preds up into their component parts (dammit keras!)
-        base_preds = Lambda(lambda x: x[:,:,:,:13])(y_pred)
+        base_preds = y_pred[:,:,:,:13]
         base_preds = tf.stop_gradient(base_preds)
-        refined_preds = Lambda(lambda x: x[:,:,:,13:])(y_pred)
+        refined_preds = y_pred[:,:,:,13:]
 
         # get crops;
         # this is actually repetitive code from the model architecture, 
@@ -345,7 +349,8 @@ class ModelFactory:
         thresh = 0.9 * 28.0 / self.im_width
         loss_mask = tf.where(dists < thresh, tf.ones(tf.shape(dists)), tf.zeros(tf.shape(dists)))
         loss_mask = tf.expand_dims(loss_mask, 1)
-        loss_mask = tf.expand_dims
+        loss_mask = tf.expand_dims(loss_mask, 1)
+
         label_crops = []
         for i in range(num_coords):
             box = Lambda( lambda x: x[:,i,:] )(boxes)
@@ -818,6 +823,9 @@ class ModelFactory:
 
     def identityLoss(self, labels, preds):
         return tf.reshape(tf.reduce_sum(preds), (1,))
+
+    def zeroLoss(self, labels, preds):
+        return tf.constant(0.0)
 
     def maskSigmoidLoss(self, labels, preds, bboxes):
         labels = tf.expand_dims(labels, axis=-1)

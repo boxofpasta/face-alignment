@@ -187,6 +187,26 @@ class CropAndResize(Layer):
         base_config = super(CropAndResize, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+
+ # Why do Lambda layers have to not work in keras ... :'(
+class SliceBboxes(Layer):
+
+    def __init__(self, index, **kwargs):
+        self.index = index
+        super(SliceBboxes, self).__init__(**kwargs)
+
+    def call(self, inputs):
+        return inputs[:,self.index,:]
+
+    def compute_output_shape(self, input_shape):
+        return tuple([input_shape[0]] + [input_shape[2]])
+
+    def get_config(self):
+        config = {'index': self.index}
+        base_config = super(SliceBboxes, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
 class Resize(Layer):
 
     def __init__(self, out_im_res, method, **kwargs):
