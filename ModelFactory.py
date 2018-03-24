@@ -283,7 +283,7 @@ class ModelFactory:
         method = tf.image.ResizeMethod.BILINEAR
         x = Convolution2D(16, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = layerUtils.depthwiseConvBlock(x, 16, 64, down_sample=True)
-        x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[2,2])
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
         x = layerUtils.depthwiseConvBlock(x, 64, out_channels, final_activation='linear')
         x = layerUtils.Resize(out_side_len, method)(x)
@@ -296,14 +296,17 @@ class ModelFactory:
         # outerlip only for now
         l = self.mask_side_len
         num_coords = 13
+        method = tf.image.ResizeMethod.BILINEAR
         base_model = self.getPointMaskerConcat(compile=False)
         img_input = base_model.input
         base_preds = base_model.output
+        base_preds = layerUtils.Resize(self.im_height, method)(base_preds)
         base_preds_normalized = Activation('sigmoid')(base_preds)
 
         # get crop for each coordinate
+        # note that boxes and mask means are all in normalized image coordinates, i.e [0, 1]
         mask_means = layerUtils.MaskMean()(base_preds_normalized)
-        boxes = layerUtils.BoxesFromCenters(28)(mask_means)
+        boxes = layerUtils.BoxesFromCenters(28.0 / self.im_height)(mask_means)
 
         # slice and join to a separate refine model for each coordinate
         refined_coords = []
@@ -329,6 +332,7 @@ class ModelFactory:
 
     def cascadedPointMaskSigmoidLoss(self, y_true, y_pred):
         num_coords = 13
+        method = tf.image.ResizeMethod.BILINEAR
 
         # split the preds up into their component parts (dammit keras!)
         base_preds = y_pred[:,:,:,:13]
@@ -341,12 +345,14 @@ class ModelFactory:
         base_preds_normalized = Activation('sigmoid')(base_preds)
         mask_means = layerUtils.MaskMean()(base_preds_normalized)
         true_means = layerUtils.MaskMean()(y_true)
-        boxes = layerUtils.BoxesFromCenters(28)(mask_means)
+        #boxes = layerUtils.BoxesFromCenters(28.0 / self.im_height)(true_means)
+        #boxes = layerUtils.PerturbBboxes([0.8, 1.2], [-0.25, 0.25])(boxes)
+        boxes = layerUtils.BoxesFromCenters(28.0 / self.im_height)(mask_means)
 
         # avoid penalizing refined mask when the initial estimate is not even close to truth
         sqrd_diffs = tf.squared_difference(mask_means, true_means)
         dists = tf.sqrt(tf.reduce_sum(sqrd_diffs, axis=-1))
-        thresh = 0.9 * 28.0 / self.im_width
+        thresh = 0.30 * 28.0 / self.im_height
         loss_mask = tf.where(dists < thresh, tf.ones(tf.shape(dists)), tf.zeros(tf.shape(dists)))
         loss_mask = tf.expand_dims(loss_mask, 1)
         loss_mask = tf.expand_dims(loss_mask, 1)
@@ -399,16 +405,16 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 256, 256)
         
         #z.append(x)
-
+    
         method = tf.image.ResizeMethod.BILINEAR
         x = layerUtils.depthwiseConvBlock(x, 256, 128)
         x = layerUtils.Resize(28, method)(x)
         
         z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 128)
         x = Concatenate()([x, z[0]])
-        x = layerUtils.depthwiseConvBlock(x, 256, 32)
+        x = layerUtils.depthwiseConvBlock(x, 256)
 
-        x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 256, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
 

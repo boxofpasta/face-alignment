@@ -376,11 +376,11 @@ def getCoordsFromPointMasks(masks, targ_width, targ_height, mode = 'mean'):
     
     Returns
     -------
-    Array of shape (num_coords, 2). Coordinates are wrt mask image dimensions.
+    Array of shape (num_coords, 2). Coordinates are wrt dimensions defined by targ_width and targ_height.
     """
     coords = []
     for coord_mask in masks:
-        coord_mask = cv2.resize(coord_mask, (targ_height, targ_width))
+        coord_mask = cv2.resize(coord_mask, (targ_height, targ_width), interpolation=cv2.INTER_LINEAR)
 
         if mode == 'max':
             y_ind, x_ind = np.unravel_index(np.argmax(coord_mask), coord_mask.shape)

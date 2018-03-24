@@ -142,7 +142,7 @@ class BoxesFromCenters(Layer):
 
     def call(self, centers):
 
-        # centers should follow [y, x]
+        # centers should follow [y, x] and all fall between [0, 1] (must be normalized coordinates)
         # [batch, num_coords, 2]
         offset = self.side_len / 2.0
         offsets = tf.constant([-offset, -offset, offset, offset])

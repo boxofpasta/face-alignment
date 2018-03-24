@@ -6,6 +6,7 @@ import os
 import time
 import scipy.misc
 import numpy as np
+import copy
 np.random.seed(0)
 
 import matplotlib
@@ -98,7 +99,7 @@ def visualizePointOrder(coords):
 
 
 if __name__ == '__main__':
-    ibug_version = False
+    ibug_version = True
     notify_training_complete = True
     factory = ModelFactory.ModelFactory()
     
@@ -120,15 +121,26 @@ if __name__ == '__main__':
         plt.show()
     """
 
+    #batch_generator = BatchGenerator.PointMaskBatchGenerator(samples, 'data/train_ibug', factory.mask_side_len, 
+    #                                                               augment_on_generate=True, ibug_version=ibug_version)
+    
     """
-    batch_generator = BatchGenerator.PointMaskBatchGenerator(samples, 'data/train_ibug', factory.mask_side_len, 
+    batch_generator = BatchGenerator.PointMaskCascadedBatchGenerator(samples, 'data/train_ibug', factory.mask_side_len, 224,
                                                                    augment_on_generate=True, ibug_version=ibug_version)
     X, Y = batch_generator.getBatchFromNames(samples, augment=True)
-    ims, masks = X[0], Y[0]
+    ims, masks, hd_masks = X[0], Y[0], Y[1]
     for i in range(len(ims)):
-        plt.imshow(masks[i][:,:,0])
-        plt.show()
-        utils.visualizeCoordMasks(ims[i], masks[i])
+        #plt.imshow(masks[i][:,:,0])
+        #plt.show()
+        #plt.imshow(hd_masks[i][:,:,0])
+        #plt.show()
+
+        coord_masks = np.moveaxis(masks[i], -1, 0)
+        coord_hd_masks = np.moveaxis(hd_masks[i], -1, 0)
+        coarse_coords = utils.getCoordsFromPointMasks(coord_masks, 224, 224)
+        fine_coords = utils.getCoordsFromPointMasks(coord_hd_masks, 224, 224)
+        utils.visualizeCoords(ims[i], coarse_coords + fine_coords, np.arange(0, len(coarse_coords)))
+        #utils.visualizeCoordMasks(ims[i], masks[i])
     """
 
     now = datetime.datetime.now()
@@ -138,8 +150,8 @@ if __name__ == '__main__':
     model_name = 'point_masker_cascaded'
     model_folder = 'models/' + model_name + '/' + time_str
     model_path = model_folder + '/model.h5'
-    #model_path = '/home/tian/fun/face-alignment/models/point_masker_cascaded/03-20:23:06/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_cascaded/03-19:21:24/model.h5'
+    #model_path = '/home/tian/fun/face-alignment/models/point_masker_cascaded/03-21:22:46/model.h5'
+    model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_cascaded/03-23:00:00/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
@@ -147,12 +159,12 @@ if __name__ == '__main__':
     #model_path = "/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/2018-03-06:20:17/model.h5"
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerConcat()
-    model = factory.getPointMaskerConcatCascaded()
+    #model = factory.getPointMaskerConcatCascaded()
     #model = factory.getPointMaskerDilated()
     #model = factory.getPointMaskerAttention()
     #model = factory.getPointMaskerDilated()
     #path = 'models/point_masker_attention/2018-03-06:00:14/model.h5'
-    #model = factory.getSaved(model_path)
+    model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     model.summary()
 
@@ -169,8 +181,8 @@ if __name__ == '__main__':
     else:
         with open(train_path + '/names.json') as fp:
             all_names = json.load(fp)
-        val_split_ratio = 0.15
-        num_val_samples = int(0.15 * len(all_names))
+        val_split_ratio = 0.3
+        num_val_samples = int(val_split_ratio * len(all_names))
         val_indices = np.random.randint(0, len(all_names), num_val_samples)
         all_val_names = [all_names[ind] for ind in val_indices]
         all_train_names = list(set(all_names) - set(all_val_names))
@@ -232,14 +244,14 @@ if __name__ == '__main__':
         #modelTests.testNormalizedDistanceError(model, val_batch_generator)
         #modelTests.videoTest(model)
         #modelTests.tryPointMaskerDilatedOnSamples(model)
-        modelTests.tryPointMaskerCascaded(model)
+        modelTests.tryPointMaskerCascadedOnSamples(model)
         #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        epochs = 150
+        epochs = 120
         tb_log_dir = model_folder + '/tensorboard/'
         tb_callback = keras.callbacks.TensorBoard(log_dir=tb_log_dir, 
                                                     histogram_freq=0,

@@ -14,40 +14,55 @@ def normalizeMask(mask):
     mask = np.maximum(mask - np.mean(mask), 0)
     return mask / np.max(mask)
 
+def tryPointMaskerCascadedOnSamples(model):
+    folder = 'downloads/samples/'
+    for fname in os.listdir(folder):
+        if fname.endswith(('png', 'jpg')):
+            im = cv2.imread(folder + fname)
+            im = cv2.resize(im, (224, 224))
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+            width = len(im[0])
+            height = len(im)
+            t1 = time.time()
+            base_masks, residual_masks = getNormalizedCascadedMasksFromImage(model, im)
+            print time.time() - t1
+            base_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'mean')
+            residual_coords = utils.getCoordsFromPointMasks(residual_masks, 28, 28, 'mean')
+            #max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
+            coords = np.add(base_coords, residual_coords) - 28 / 2.0 - 4.0
+
+            #for i in range(len(residual_masks)):
+            #    plt.imshow(residual_masks[i])
+            #    plt.show()
+
+            #utils.visualizeCoords(im, base_coords)
+            utils.visualizeCoords(im, np.concatenate([base_coords, coords], axis=0), np.arange(0, len(coords)))
+
+
 def tryPointMaskerCascaded(model, batch_generator, sample_names=None):
     if sample_names == None:
         sample_names = batch_generator.all_names
 
     for sample_name in sample_names:
-        inputs, _ = batch_generator.getPair(sample_name)
-        X, Y = batch_generator.getBatchFromNames([sample_name])
+        inputs, _ = batch_generator.getTrainingPairFromName(sample_name)
+        #X, Y = batch_generator.getBatchFromNames([sample_name])
+        print inputs
         im = inputs[0]
-        print_str = 'sample name: ' + sample_name 
-        if batch_generator.isInValSet(sample_name):
-            print_str += ', from val set'
-        else:
-            print_str += ', from train set'
+        width = len(im[0])
+        height = len(im)
+        print 'sample name: ' + sample_name 
+        base_masks, residual_masks = getNormalizedCascadedMasksFromImage(model, im)
+        base_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'mean')
+        residual_coords = utils.getCoordsFromPointMasks(residual_masks, 28, 28, 'mean')
+        #max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
+        coords = np.add(base_coords, residual_coords) - 28 / 2.0 - 4.0
 
-        base_masks, refined_masks = getNormalizedMasksFromImage(model, im)
-        coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'mean')
-        max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
+        #for i in range(len(residual_masks)):
+        #    plt.imshow(residual_masks[i])
+        #    plt.show()
 
-        """
-        for i in range(len(refined_masks)):
-            plt.imshow(refined_masks[i])
-            plt.show()
-        """
-        plt.imshow(refined_masks[0])
-        plt.show()
-
-        """masks /= np.max(masks, axis=[1,2])
-        summed = np.sum(masks, axis=0)
-        summed = cv2.resize(summed, (height, width))
-        summed = np.minimum(1, summed)
-        """
-        masks = np.moveaxis(masks, 0, -1)
-        #utils.visualizeCoordMasks(im, masks)
         utils.visualizeCoords(im, coords)
+        utils.visualizeCoords(im, np.concatenate([base_coords, coords], axis=0), np.arange(0, len(coords)))
 
 def tryPointMaskerVanilla(model, batch_generator, sample_names=None):
     if sample_names == None:
@@ -225,16 +240,18 @@ def getNormalizedCascadedMasksFromImage(model, im):
     
     #labels = inputs[1]
     #labels = np.moveaxis(labels, -1, 0)
+    #print np.shape(outputs)
+    #print np.shape(outputs[1])
     base_preds = getNormalizedMasksFromPred(outputs[0])
-    refined_preds = getNormalizedMasksFromPred(outputs[1])
-    return base_preds, refined_preds
+    residual_preds = getNormalizedMasksFromPred(outputs[1])[13:,:,:]
+    return base_preds, residual_preds
 
 def getNormalizedMasksFromPred(preds):
     preds = np.squeeze(preds)
     preds = utils.imSoftmax(preds)
     preds = np.moveaxis(preds, -1, 0)
     preds = [ normalizeMask(pred) for pred in preds]
-    return preds
+    return np.array(preds)
 
 def tryPointMaskerDilatedOnSamples(model):
     folder = 'downloads/samples/'

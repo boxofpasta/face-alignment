@@ -289,7 +289,7 @@ class PointMaskStrictBatchGenerator(BatchGenerator):
             masks /= np.max(masks, axis=(0,1))
 
             l = self.mask_side_len / 2**i
-            masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
+            masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_LINEAR)
             labels.append(masks)
 
         """
@@ -464,11 +464,12 @@ class PointMaskCascadedBatchGenerator(BatchGenerator):
         hd_masks = utils.coordsToHeatmapsFast(normalized_lip_coords, self.hd_pdfs)
         hd_masks = np.moveaxis(hd_masks, 0, -1)
         hd_masks /= np.max(hd_masks, axis=(0,1))
-
         l = self.mask_side_len
         hd_l = self.hd_mask_side_len
-        masks = cv2.resize(masks, (l, l), interpolation=cv2.INTER_AREA)
-        hd_masks = cv2.resize(hd_masks, (hd_l, hd_l), interpolation=cv2.INTER_AREA)
+
+        # try using hd masks for everything!
+        masks = cv2.resize(masks, (hd_l, hd_l), interpolation=cv2.INTER_LINEAR)
+        hd_masks = cv2.resize(hd_masks, (hd_l, hd_l), interpolation=cv2.INTER_LINEAR)
         return [im], [masks, hd_masks]
 
 
