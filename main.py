@@ -99,7 +99,7 @@ def visualizePointOrder(coords):
 
 
 if __name__ == '__main__':
-    ibug_version = True
+    ibug_version = not train
     notify_training_complete = True
     factory = ModelFactory.ModelFactory()
     
@@ -151,7 +151,8 @@ if __name__ == '__main__':
     model_folder = 'models/' + model_name + '/' + time_str
     model_path = model_folder + '/model.h5'
     #model_path = '/home/tian/fun/face-alignment/models/point_masker_cascaded/03-21:22:46/model.h5'
-    model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_cascaded/03-23:00:00/model.h5'
+    if not train:
+        model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_cascaded/03-24:16:02/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
     #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
@@ -159,12 +160,14 @@ if __name__ == '__main__':
     #model_path = "/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/2018-03-06:20:17/model.h5"
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerConcat()
-    #model = factory.getPointMaskerConcatCascaded()
+    if train:
+        model = factory.getPointMaskerConcatCascaded()
+    else:
+        model = factory.getSaved(model_path)
     #model = factory.getPointMaskerDilated()
     #model = factory.getPointMaskerAttention()
     #model = factory.getPointMaskerDilated()
     #path = 'models/point_masker_attention/2018-03-06:00:14/model.h5'
-    model = factory.getSaved(model_path)
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
     model.summary()
 

@@ -29,11 +29,11 @@ def tryPointMaskerCascadedOnSamples(model):
             base_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'mean')
             residual_coords = utils.getCoordsFromPointMasks(residual_masks, 28, 28, 'mean')
             #max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
-            coords = np.add(base_coords, residual_coords) - 28 / 2.0 - 4.0
+            coords = np.add(base_coords, residual_coords) - 28 / 2.0
 
-            #for i in range(len(residual_masks)):
-            #    plt.imshow(residual_masks[i])
-            #    plt.show()
+            for i in range(len(residual_masks)):
+                plt.imshow(residual_masks[i])
+                plt.show()
 
             #utils.visualizeCoords(im, base_coords)
             utils.visualizeCoords(im, np.concatenate([base_coords, coords], axis=0), np.arange(0, len(coords)))

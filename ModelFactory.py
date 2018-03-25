@@ -59,7 +59,7 @@ class ModelFactory:
             'StopGradientLayer': layerUtils.StopGradientLayer,
             'pointMaskDistanceLoss': self.pointMaskDistanceLoss,
             'pointMaskDistance': self.pointMaskDistance,
-            'pointMaskSigmoidDistanceLoss': self.pointMaskSigmoidDistanceLoss,
+            'pointMaskDistanceLossPresetDims': self.pointMaskDistanceLossPresetDims,
             'TileMultiply': layerUtils.TileMultiply,
             'TileSubtract': layerUtils.TileSubtract,
             'MaskMean': layerUtils.MaskMean,
@@ -284,12 +284,24 @@ class ModelFactory:
         x = Convolution2D(16, (3, 3), strides=(2, 2), padding='same', use_bias=False)(img_input)
         x = layerUtils.depthwiseConvBlock(x, 16, 64, down_sample=True)
         x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[2,2])
-        x = layerUtils.depthwiseConvBlock(x, 64, 64)
-        x = layerUtils.depthwiseConvBlock(x, 64, out_channels, final_activation='linear')
+        x = layerUtils.depthwiseConvBlock(x, 64, 64, dilation_rate=[4,4])
+        x = layerUtils.depthwiseConvBlock(x, 64, 16)
+        x = layerUtils.Resize(14, method)(x)
+        x = layerUtils.depthwiseConvBlock(x, 16, out_channels, final_activation='linear')
         x = layerUtils.Resize(out_side_len, method)(x)
         model = Model(inputs=img_input, outputs=x)
         return model
-        
+
+    def getPointMaskerCascadedHead(self, backbone, out_side_len, in_channels):
+        out_shape = (out_side_len, out_side_len, 1)
+
+        method = tf.image.ResizeMethod.BILINEAR
+        x = layerUtils.depthwiseConvBlock(backbone, in_channels, 64, dilation_rate=[2,2])
+        x = layerUtils.depthwiseConvBlock(x, 64, 16)
+        x = layerUtils.Resize(14, method)(x)
+        x = layerUtils.depthwiseConvBlock(x, 16, 1, final_activation='linear')
+        x = layerUtils.Resize(out_side_len, method)(x)
+        return x
 
     def getPointMaskerConcatCascaded(self):
 
@@ -297,10 +309,9 @@ class ModelFactory:
         l = self.mask_side_len
         num_coords = 13
         method = tf.image.ResizeMethod.BILINEAR
-        base_model = self.getPointMaskerConcat(compile=False)
+        base_model, backbone = self.getPointMaskerConcat(compile=False)
         img_input = base_model.input
         base_preds = base_model.output
-        base_preds = layerUtils.Resize(self.im_height, method)(base_preds)
         base_preds_normalized = Activation('sigmoid')(base_preds)
 
         # get crop for each coordinate
@@ -312,10 +323,17 @@ class ModelFactory:
         refined_coords = []
         for i in range(num_coords):
             box = layerUtils.SliceBboxes(i)(boxes)
-            crop = layerUtils.CropAndResize(28)([base_model.input, box])
-            refine_model = self.getPointMaskerSmall(28, 28, 3, 1)
-            output = refine_model(crop)
-            refined_coords.append(output)
+
+            # using mask-rcnn's roi pooling
+            crop = layerUtils.CropAndResize(7)([backbone, box])
+            refined_output = self.getPointMaskerCascade1dHead(crop, 28, 64)
+            refined_coords.append(refined_output)
+
+            # using crops from input directly 
+            # crop = layerUtils.CropAndResize(28)([base_model.input, box])
+            # refine_model = self.getPointMaskerSmall(28, 28, 3, 1)
+            # output = refine_model(crop)
+            # refined_coords.append(output)
 
         refined_preds = Concatenate()(refined_coords)
         all_preds = Concatenate()([base_preds, refined_preds])
@@ -324,7 +342,7 @@ class ModelFactory:
         #optimizer = optimizers.adam(lr=6E-2)
         optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
         model.compile(
-            loss=[ self.pointMaskSigmoidDistanceLoss, self.cascadedPointMaskSigmoidLoss ], 
+            loss=[ self.pointMaskDistanceLossPresetDims, self.cascadedPointMaskSigmoidLoss ], 
             # metrics=[ self.pointMaskDistance, self.zeroLoss ], 
             optimizer=optimizer
         )
@@ -367,6 +385,7 @@ class ModelFactory:
 
         labels = Concatenate()(label_crops)
         labels *= loss_mask
+        refined_preds = layerUtils.Resize(28, method)(refined_preds)
         refined_preds *= loss_mask
 
         return self.pointMaskDistanceLoss(labels, refined_preds)
@@ -389,6 +408,7 @@ class ModelFactory:
         # 112x112
         x = layerUtils.depthwiseConvBlock(x, 32, 64, down_sample=True)
         x = layerUtils.depthwiseConvBlock(x, 64, 64)
+        backbone = layerUtils.depthwiseConvBlock(x, 64, 64)
 
         # 56x56
         x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
@@ -410,11 +430,11 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 256, 128)
         x = layerUtils.Resize(28, method)(x)
         
-        z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 128)
+        z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 64)
         x = Concatenate()([x, z[0]])
-        x = layerUtils.depthwiseConvBlock(x, 256)
-
-        x = layerUtils.depthwiseConvBlock(x, 256, num_coords, final_activation='linear')
+        
+        x = layerUtils.depthwiseConvBlock(x, 192, 128)
+        x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
 
@@ -433,7 +453,7 @@ class ModelFactory:
         if compile:
             optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
             model.compile(loss=[ self.pointMaskSigmoidLoss ], metrics=[ self.pointMaskDistance ], optimizer=optimizer)
-        return model
+        return model, backbone
 
         
 
@@ -723,9 +743,11 @@ class ModelFactory:
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=preds, dim=1)
         return tf.reduce_sum(cross_entropy)
 
-    def pointMaskSigmoidDistanceLoss(self, labels, preds):
-        weight = 0.7
-        return weight * self.pointMaskSigmoidLoss(labels, preds) + (1.0 - weight) * self.pointMaskDistanceLoss(labels, preds)
+    def pointMaskDistanceLossPresetDims(self, labels, preds):
+        method = tf.image.ResizeMethod.BILINEAR
+        labels = layerUtils.Resize(28, method)(labels)
+        preds = layerUtils.Resize(28, method)(preds)
+        return self.pointMaskDistanceLoss(labels, preds)
 
     def pointMaskSigmoidLoss(self, labels, preds):
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=preds, labels=labels)

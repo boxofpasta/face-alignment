@@ -380,7 +380,6 @@ def getCoordsFromPointMasks(masks, targ_width, targ_height, mode = 'mean'):
     """
     coords = []
     for coord_mask in masks:
-        coord_mask = cv2.resize(coord_mask, (targ_height, targ_width), interpolation=cv2.INTER_LINEAR)
 
         if mode == 'max':
             y_ind, x_ind = np.unravel_index(np.argmax(coord_mask), coord_mask.shape)
@@ -394,11 +393,13 @@ def getCoordsFromPointMasks(masks, targ_width, targ_height, mode = 'mean'):
             max_val = np.max(coord_mask)
             coord_mask = np.where(coord_mask > 0.01 * max_val, coord_mask, 0.0)
             coord_mask /= np.sum(coord_mask)
+            y_scale = targ_height / float(len(coord_mask))
+            x_scale = targ_width / float(len(coord_mask[0]))
 
             x_inds = np.arange(0, len(coord_mask[0]))
             y_inds = np.arange(0, len(coord_mask))
-            x_avg = np.sum(np.array([x_inds]) * coord_mask)
-            y_avg = np.sum(np.transpose(np.array([y_inds])) * coord_mask)
+            x_avg = x_scale * np.sum(np.array([x_inds]) * coord_mask)
+            y_avg = y_scale * np.sum(np.transpose(np.array([y_inds])) * coord_mask)
             #plt.imshow(coord_mask)
             #plt.show()
             #print x_avg
