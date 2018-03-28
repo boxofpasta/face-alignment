@@ -31,9 +31,9 @@ def tryPointMaskerCascadedOnSamples(model):
             #max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
             coords = np.add(base_coords, residual_coords) - 28 / 2.0
 
-            for i in range(len(residual_masks)):
-                plt.imshow(residual_masks[i])
-                plt.show()
+            #for i in range(len(residual_masks)):
+            #    plt.imshow(residual_masks[i])
+            #    plt.show()
 
             #utils.visualizeCoords(im, base_coords)
             utils.visualizeCoords(im, np.concatenate([base_coords, coords], axis=0), np.arange(0, len(coords)))
@@ -490,7 +490,14 @@ def videoTest(model):
         cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
         roi_color = frame[y:y+h, x:x+w]
         roi_color = cv2.cvtColor(roi_color, cv2.COLOR_BGR2RGB)
-        preds = getCoordsFromImage(model, roi_color)
+        
+        #preds = getCoordsFromImage(model, roi_color)
+        base_masks, residual_masks = getNormalizedCascadedMasksFromImage(model, roi_color)
+        base_coords = utils.getCoordsFromPointMasks(base_masks, w, h, 'mean')
+        residual_coords = utils.getCoordsFromPointMasks(residual_masks, 28, 28, 'mean')
+        #max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
+        preds = np.add(base_coords, residual_coords) - 28 / 2.0
+
         for coord in preds:
             #final_coord = (x + int(round(w / 224.0 * coord[1])), y + int(h / 224.0 * round(coord[0])))
             final_coord = (x + int(coord[1]), y + int(coord[0]))

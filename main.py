@@ -152,12 +152,12 @@ if __name__ == '__main__':
     model_path = model_folder + '/model.h5'
     #model_path = '/home/tian/fun/face-alignment/models/point_masker_cascaded/03-21:22:46/model.h5'
     if not train:
-        model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_cascaded/03-24:16:02/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
-    #model_path = '/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/model.h5'
-    #model_path = "/Users/tianxingli/Desktop/tf_testing/face-alignment/models/point_masker_concat/2018-03-06:20:17/model.h5"
+        model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_cascaded/03-26:23:30/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
+    #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_concat/model.h5'
+    #model_path = "/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_concat/2018-03-06:20:17/model.h5"
     #model = factory.getPointMaskerSmall()
     #model = factory.getPointMaskerConcat()
     if train:
@@ -245,9 +245,9 @@ if __name__ == '__main__':
     if not train:
         #val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, val_path)
         #modelTests.testNormalizedDistanceError(model, val_batch_generator)
-        #modelTests.videoTest(model)
+        modelTests.videoTest(model)
         #modelTests.tryPointMaskerDilatedOnSamples(model)
-        modelTests.tryPointMaskerCascadedOnSamples(model)
+        #modelTests.tryPointMaskerCascadedOnSamples(model)
         #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)
