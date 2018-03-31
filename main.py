@@ -169,7 +169,7 @@ if __name__ == '__main__':
     #model = factory.getPointMaskerDilated()
     #path = 'models/point_masker_attention/2018-03-06:00:14/model.h5'
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
-    model.summary()
+    #model.summary()
 
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
     #train_batch_generator = BatchGenerator.PointMaskBatchGenerator('data/train_ibug', factory.mask_side_len, val_split_perc=0.2)
@@ -245,9 +245,16 @@ if __name__ == '__main__':
     if not train:
         #val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, val_path)
         #modelTests.testNormalizedDistanceError(model, val_batch_generator)
-        modelTests.videoTest(model)
+        #modelTests.videoTest(model)
         #modelTests.tryPointMaskerDilatedOnSamples(model)
-        #modelTests.tryPointMaskerCascadedOnSamples(model)
+        compare_coords = {}
+        compare_folder = 'outputs-compare'
+        for fname in os.listdir(compare_folder):
+            if fname.endswith('.txt'):
+                print fname[:-4]
+                compare_coords[fname[:-4]] = utils.readCoords(compare_folder + '/' + fname)
+
+        modelTests.tryPointMaskerCascadedOnSamples(model, 'downloads/hard-samples', 'outputs', compare_coords)
         #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)

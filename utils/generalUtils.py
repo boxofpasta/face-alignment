@@ -160,7 +160,23 @@ def visualizeCoordMasks(im, masks):
     visualizeMask(im, summed)
 
 
-def visualizeCoords(im, coords, special_indices=[]):
+def readCoords(path):
+    """
+    The file should contain 2 float values per-line, and space separated (i.g x y).
+    """
+    coords = []
+    i = 0
+    with open(path) as f:
+        for line in f:
+            coords.append([])
+            line = line.strip()
+            for number in line.split():
+                coords[i].append(float(number))
+            coords[i].reverse()
+            i += 1
+    return coords
+
+def visualizeCoords(im, coords, special_indices=[], output_name=None):
     """
     Parameters
     ----------
@@ -175,16 +191,23 @@ def visualizeCoords(im, coords, special_indices=[]):
     fig, ax = plt.subplots(1)
     ax.set_aspect('equal')
     ax.imshow(im)
-    radius = 0.003 * len(im)
+    radius = 0.001 * len(im)
     for i in range(0, len(coords)):
         x = coords[i][1]
         y = coords[i][0]
         if i in special_indices:
-            circ = Circle((x, y), radius, color='red')
+            circ = Circle((x, y), radius, color='green')
         else:
-            circ = Circle((x, y), radius)
+            circ = Circle((x, y), radius, color='blue')
         ax.add_patch(circ)
-    plt.show()
+
+    if output_name != None:
+        plt.axis('off')
+        plt.savefig(output_name)
+    else:
+        plt.show()
+
+
 
 def getMask(polygons, src_dims, dst_dims):
     """
