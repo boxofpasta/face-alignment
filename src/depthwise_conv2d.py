@@ -8,9 +8,8 @@ from keras.layers import Conv2D
 from keras.legacy.interfaces import conv2d_args_preprocessor, generate_legacy_interface
 from keras.utils import conv_utils
 
-# This code mostly is taken form Keras: Separable Convolution Layer source code and changed according to needs.
-
-
+# This code mostly is taken form Keras: Separable Convolution Layer source code. 
+# Veryy minor changes were made to make things more convenient for me.
 def depthwise_conv2d_args_preprocessor(args, kwargs):
     converted = []
     if 'init' in kwargs:

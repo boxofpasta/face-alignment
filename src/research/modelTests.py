@@ -1,3 +1,9 @@
+"""
+Includes a lot of code that was used for quick experimenting. 
+Junk builds quickly over months of experimentation.
+Most of it is no longer really needed -- the parts that are have been extracted out of this file.
+"""
+
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
 import scipy.misc
