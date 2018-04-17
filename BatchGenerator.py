@@ -207,6 +207,7 @@ class MaskAndBboxBatchGenerator(BatchGenerator):
     def __init__(self, names, path, mask_side_len, **kwargs):
         BatchGenerator.__init__(self, names, path, **kwargs)
         self.mask_side_len = mask_side_len
+        self.ibug_version = ibug_version
 
         # pdfs cache for speeding up coord mask expansions (makes a big difference in training times)
         #self.pdfs = utils.getGaussians(10000, self.mask_side_len)
@@ -218,7 +219,7 @@ class MaskAndBboxBatchGenerator(BatchGenerator):
         return heatmap"""
 
         # need lip_coords in pixel-coordinate units for generating masks
-        lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords))).astype(int)
+        lip_coords = (len(im) * np.array(helenUtils.getLipCoords(coords, ibug_version=self.ibug_version))).astype(int)
         mask = utils.getMask([lip_coords], (len(im), len(im[0])), (len(im), len(im[0])))
         mask = np.expand_dims(mask, axis=-1)
         

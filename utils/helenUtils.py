@@ -235,17 +235,17 @@ def cropPair(im, label):
     im = utils.getCropped(im, bbox)
     return [im, label]
 
-def getLeyeCenter(coords):
-    leye_coords = coords[36:42]
+def getLeyeCenter(coords, ibug_version=True):
+    leye_coords = coords[36:42] if ibug_version else coords[59:69]
     return np.array([np.mean(leye_coords[:,0]), np.mean(leye_coords[:,1])])
 
-def getReyeCenter(coords):
-    reye_coords = coords[42:48]
+def getReyeCenter(coords, ibug_version=True):
+    reye_coords = coords[42:48] if ibug_version else coords[49:59]
     return np.array([np.mean(reye_coords[:,0]), np.mean(reye_coords[:,1])])
 
-def getEyeDistance(coords):
-    leye_center = getLeyeCenter(coords)
-    reye_center = getReyeCenter(coords)
+def getEyeDistance(coords, ibug_version=True):
+    leye_center = getLeyeCenter(coords, ibug_version=ibug_version)
+    reye_center = getReyeCenter(coords, ibug_version=ibug_version)
     return np.linalg.norm(leye_center - reye_center)
 
 def getOrdered(ims, labels):

@@ -131,9 +131,10 @@ class ModelFactory:
         # Output dims are 14 x 14 x (512 * alpha_1)
         x = layerUtils.depthwiseConvBlock(x, 512 * alpha_1, 1024 * alpha_1, down_sample=True)
         x = layerUtils.depthwiseConvBlock(x, 1024 * alpha_1, 1024 * alpha_1)
-        x = GlobalAveragePooling2D()(x)
-        x = Dense(units=24, activation='linear')(x)
-        x = Reshape((12, 2))(x)
+        
+        #x = GlobalAveragePooling2D()(x)
+        #x = Dense(units=24, activation='linear')(x)
+        #x = Reshape((12, 2))(x)
         model = Model(inputs=[img_input], outputs=[x])
         optimizer = optimizers.adam(lr=3E-4)
         model.compile(loss=self.squaredDistanceLoss, optimizer=optimizer)
@@ -326,7 +327,7 @@ class ModelFactory:
 
             # using mask-rcnn's roi pooling
             crop = layerUtils.CropAndResize(7)([backbone, box])
-            refined_output = self.getPointMaskerCascade1dHead(crop, 28, 64)
+            refined_output = self.getPointMaskerCascadedHead(crop, 28, 64)
             refined_coords.append(refined_output)
 
             # using crops from input directly 
@@ -340,6 +341,7 @@ class ModelFactory:
         model = Model(inputs=base_model.input, outputs=[base_preds, all_preds])
         
         #optimizer = optimizers.adam(lr=6E-2)
+
         optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
         model.compile(
             loss=[ self.pointMaskDistanceLossPresetDims, self.cascadedPointMaskSigmoidLoss ], 
@@ -415,14 +417,14 @@ class ModelFactory:
         
         # 28x28
         #z.append(layerUtils.depthwiseConvBlock(b, 128, 128))
-        z.append(layerUtils.depthwiseConvBlock(x, 128, 128))
+        #z.append(layerUtils.depthwiseConvBlock(x, 128, 128))
         x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
 
         # 14x14
         # having a larger kernel size gives a larger receptive field, which helps prevent misclassification
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
         x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
-        x = layerUtils.depthwiseConvBlock(x, 256, 256)
+        x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[8,8])
         
         #z.append(x)
     
@@ -430,10 +432,10 @@ class ModelFactory:
         x = layerUtils.depthwiseConvBlock(x, 256, 128)
         x = layerUtils.Resize(28, method)(x)
         
-        z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 64)
-        x = Concatenate()([x, z[0]])
+        #z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 64)
+        #x = Concatenate()([x, z[0]])
         
-        x = layerUtils.depthwiseConvBlock(x, 192, 128)
+        #x = layerUtils.depthwiseConvBlock(x, 192, 128)
         x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
         #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')

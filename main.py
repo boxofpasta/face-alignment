@@ -11,9 +11,9 @@ np.random.seed(0)
 
 import matplotlib
 import keras
-if not train:
-    matplotlib.use('Qt5Agg')
-import matplotlib.pyplot as plt
+#if not train:
+#    matplotlib.use('Qt5Agg')
+#import matplotlib.pyplot as plt
 import utils.helenUtils as helenUtils
 import utils.generalUtils as utils
 import modelTests
@@ -99,7 +99,8 @@ def visualizePointOrder(coords):
 
 
 if __name__ == '__main__':
-    ibug_version = not train
+    ibug_version = False #not train
+    train_on_all = False
     notify_training_complete = True
     factory = ModelFactory.ModelFactory()
     
@@ -152,7 +153,8 @@ if __name__ == '__main__':
     model_path = model_folder + '/model.h5'
     #model_path = '/home/tian/fun/face-alignment/models/point_masker_cascaded/03-21:22:46/model.h5'
     if not train:
-        model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_cascaded/03-26:23:30/model.h5'
+        #model_path = '/home/tian/fun/face-alignment/models/point_masker_cascaded/04-02:00:19/model.h5'
+        model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_cascaded/03-31:11:27/model.h5'
     #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_attention/03-14:23:06/model.h5'
     #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_concat/03-17:00:38/model.h5'
     #model_path = '/Users/tianxingli/Desktop/machine-learning/face-alignment/models/point_masker_attention/2018-03-06:22:31/model.h5'
@@ -169,6 +171,7 @@ if __name__ == '__main__':
     #model = factory.getPointMaskerDilated()
     #path = 'models/point_masker_attention/2018-03-06:00:14/model.h5'
     #model = factory.getSaved('models/tmp/point_masker_shallow.h5')
+    #plot_model(model, to_file='model.png')
     #model.summary()
 
     #train_batch_generator = BatchGenerator.BboxBatchGenerator('data/train_ibug')
@@ -184,11 +187,15 @@ if __name__ == '__main__':
     else:
         with open(train_path + '/names.json') as fp:
             all_names = json.load(fp)
-        val_split_ratio = 0.3
+        val_split_ratio = 0.0 if train_on_all else 0.3
         num_val_samples = int(val_split_ratio * len(all_names))
-        val_indices = np.random.randint(0, len(all_names), num_val_samples)
+        #val_indices = np.random.randint(0, len(all_names), num_val_samples)
+        val_indices = np.random.choice(len(all_names), num_val_samples, replace=False)
         all_val_names = [all_names[ind] for ind in val_indices]
         all_train_names = list(set(all_names) - set(all_val_names))
+        print 'Number of train images: ' + str(len(all_train_names))
+        print 'Number of val images: ' + str(len(all_val_names))
+        print 'Number of images in total: ' + str(len(all_names))
     
     """
     val_split_ratio = 0.2
@@ -244,36 +251,85 @@ if __name__ == '__main__':
     
     if not train:
         #val_batch_generator = BatchGenerator.PointsBatchGenerator(all_val_names, val_path)
-        #modelTests.testNormalizedDistanceError(model, val_batch_generator)
+        #modelTests.testNormalizedDistanceError(model, val_batch_generator, ibug_version=ibug_version)
         #modelTests.videoTest(model)
         #modelTests.tryPointMaskerDilatedOnSamples(model)
+        #return
+        """
+        model = factory.getFullyConnected()
+        #model.summary()
+
+        iters = 100
+        avg = 0
+        batch = np.zeros((1, 224, 224, 3))
+
+        # the first time is always a lot slower
+        for i in range(iters + 1):
+            t1 = time.time()
+            model.predict_on_batch(batch)
+            if i > 0:
+                avg += time.time() - t1
+        print avg / float(iters)
+        
+        model, _ = factory.getPointMaskerConcat(compile=False)
+        iters = 1000
+        avg = 0
+        batch = np.zeros((1, 224, 224, 3))
+
+        # the first time is always a lot slower
+        for i in range(iters + 1):
+            t1 = time.time()
+            model.predict_on_batch(batch)
+            if i > 0:
+                avg += time.time() - t1
+        print avg / float(iters) 
+
+        #model.summary()
+
+        model = factory.getPointMaskerConcatCascaded()
+        iters = 100
+        avg = 0
+        batch = np.zeros((1, 224, 224, 3))
+
+        # the first time is always a lot slower
+        for i in range(iters + 1):
+            t1 = time.time()
+            model.predict_on_batch(batch)
+            if i > 0:
+                avg += time.time() - t1
+        print avg / float(iters)
+        """
+
         compare_coords = {}
-        compare_folder = 'outputs-compare'
+        compare_folder = 'outputs-compare-2'
         for fname in os.listdir(compare_folder):
             if fname.endswith('.txt'):
-                print fname[:-4]
-                compare_coords[fname[:-4]] = utils.readCoords(compare_folder + '/' + fname)
+                key = fname[:-4]
+                compare_coords[key] = utils.readCoords(compare_folder + '/' + fname)
+                print len(compare_coords[key])
 
-        modelTests.tryPointMaskerCascadedOnSamples(model, 'downloads/hard-samples', 'outputs', compare_coords)
+        modelTests.tryPointMaskerCascadedOnSamples(model, 'downloads/hard-samples-2', 'outputs-2', compare_coords)
         #modelTests.tryPointMaskerVanilla(model, train_batch_generator)
         #trySavedFullyConnected(model, train_batch_generator)
         #tryLipMasker(model, train_batch_generator)
         #tryLipMaskerZoomed(model, train_batch_generator, samples)
 
     if train:
-        epochs = 120
+        epochs = 240 if train_on_all else 180
+        monitor_str = 'loss' if train_on_all else 'val_loss'
         tb_log_dir = model_folder + '/tensorboard/'
         tb_callback = keras.callbacks.TensorBoard(log_dir=tb_log_dir, 
                                                     histogram_freq=0,
                                                     write_grads=True,
                                                     write_graph=True, 
                                                     write_images=True)
-        lr_callback = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, verbose=1, mode='auto', 
+        lr_callback = keras.callbacks.ReduceLROnPlateau(monitor=monitor_str, factor=0.5, patience=10, verbose=1, mode='auto', 
                                                     epsilon=0.0001, cooldown=0, min_lr=0)
-        cp_callback = keras.callbacks.ModelCheckpoint(model_path, monitor='val_loss', verbose=1, save_best_only=True, 
+        cp_callback = keras.callbacks.ModelCheckpoint(model_path, monitor=monitor_str, verbose=1, save_best_only=True, 
                                                     save_weights_only=False, mode='auto', period=5)
+        val_data = None if train_on_all else val_batch_generator.getAllData()
         model.fit_generator(generator=train_batch_generator.generate(),
-                            validation_data=val_batch_generator.getAllData(),  
+                            validation_data=val_data,  
                             steps_per_epoch=train_batch_generator.steps_per_epoch,
                             epochs=epochs,
                             callbacks=[tb_callback, cp_callback, lr_callback])

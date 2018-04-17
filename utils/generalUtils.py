@@ -196,7 +196,7 @@ def visualizeCoords(im, coords, special_indices=[], output_name=None):
         x = coords[i][1]
         y = coords[i][0]
         if i in special_indices:
-            circ = Circle((x, y), radius, color='green')
+            circ = Circle((x, y), radius, color='red')
         else:
             circ = Circle((x, y), radius, color='blue')
         ax.add_patch(circ)

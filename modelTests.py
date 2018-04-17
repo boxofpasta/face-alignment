@@ -151,7 +151,7 @@ def tryPointMaskerVanilla(model, batch_generator, sample_names=None):
         plt.show()
         """
 
-def testNormalizedDistanceError(model, batch_generator):
+def testNormalizedDistanceError(model, batch_generator, ibug_version=True):
     """
     Parameters
     ----------
@@ -174,21 +174,30 @@ def testNormalizedDistanceError(model, batch_generator):
     #for i in range(len(ims)):
     #    utils.visualizeCoords(ims[i], 224 * labels[i])
 
-    print 'Processing test set of images: '
+    print 'Processing test set of images, counted ' + str(len(ims)) + ': '
     t1 = time.time()
     for i in range(len(ims)):
         im = ims[i]
         #labels[i] = helenUtils.normalizeCoords(labels[i], len(im[0]), len(im))
-        leye_coord = helenUtils.getLeyeCenter(labels[i])
-        reye_coord = helenUtils.getReyeCenter(labels[i])
-        eye_dist = helenUtils.getEyeDistance(labels[i])
-        lip_labels = helenUtils.getLipCoords(labels[i], 1.0)
-        lip_preds = np.array(getCoordsFromImage(model, im))
+        eye_dist = helenUtils.getEyeDistance(labels[i], ibug_version=ibug_version)
+        lip_labels = helenUtils.getLipCoords(labels[i], 1.0, ibug_version=ibug_version)
+
+        # vanilla version
+        #lip_preds = np.array(getCoordsFromImage(model, im))
+
+        # cascaded version
+        base_masks, residual_masks = getNormalizedCascadedMasksFromImage(model, im)
+        base_coords = utils.getCoordsFromPointMasks(base_masks, 224, 224, 'mean')
+        residual_coords = utils.getCoordsFromPointMasks(residual_masks, 28, 28, 'mean')
+        #max_coords = utils.getCoordsFromPointMasks(base_masks, width, height, 'max')
+        lip_preds = np.add(base_coords, residual_coords) - 28 / 2.0
+
         lip_preds[:,0] /= float(len(im))
         lip_preds[:,1] /= float(len(im[0]))
         cur_avg = 0.0
         for j in range(0, len(lip_preds)):
-            dist = np.linalg.norm(lip_preds[j] - lip_labels[j])
+            diff = lip_preds[j] - lip_labels[j]
+            dist = np.sqrt(diff.dot(diff))
             normalized = dist / eye_dist
             cur_avg += normalized
         cur_avg /= len(lip_preds)
@@ -197,6 +206,9 @@ def testNormalizedDistanceError(model, batch_generator):
         factors = np.expand_dims([len(im), len(im[0])], axis=0)
         lip_preds *= factors
         lip_labels *= factors
+
+        leye_coord = helenUtils.getLeyeCenter(labels[i], ibug_version=ibug_version)
+        reye_coord = helenUtils.getReyeCenter(labels[i], ibug_version=ibug_version)
         leye_coord *= np.squeeze(factors)
         reye_coord *= np.squeeze(factors)
         
