@@ -6,11 +6,20 @@ import json
 import time
 import sys
 from keras import losses
+from keras.layers import Dense, Reshape, BatchNormalization, Flatten, Multiply, Activation, Lambda
+from keras.layers import Concatenate
 import utils.layerUtils as layerUtils
 import tensorflow as tf
 
+epsilon = 1E-6
 
-def pointMaskDistanceLoss(self, labels, preds):
+def pointMaskDistanceLossPresetDims(labels, preds):
+    method = tf.image.ResizeMethod.BILINEAR
+    labels = layerUtils.Resize(28, method)(labels)
+    preds = layerUtils.Resize(28, method)(preds)
+    return pointMaskDistanceLoss(labels, preds)
+
+def pointMaskDistanceLoss(labels, preds):
     """
     We want to penalize mask output errors that are spatially further away from ground truth.
     This is accomplished by multiplying the usual cross entropy loss with squared distance.
@@ -26,8 +35,8 @@ def pointMaskDistanceLoss(self, labels, preds):
     preds = tf.transpose(preds, [0, 3, 1, 2])
 
     # even the labels are not necessarily normalized
-    labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + self.epsilon, 2, False)
-    preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + self.epsilon, 2, False)
+    labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + epsilon, 2, False)
+    preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + epsilon, 2, False)
 
     # performs a weighted sum to get center coordinates
     x_label = tf.reduce_sum(x_inds * labels, axis=[2,3])
@@ -54,14 +63,14 @@ def pointMaskDistanceLoss(self, labels, preds):
     return tf.reduce_sum((0.1 + squared_dists) * cross_entropy)
 
 
-def pointMaskDistanceLossPresetDims(self, labels, preds):
+def pointMaskDistanceLossPresetDims(labels, preds):
     method = tf.image.ResizeMethod.BILINEAR
     labels = layerUtils.Resize(28, method)(labels)
     preds = layerUtils.Resize(28, method)(preds)
     return pointMaskDistanceLoss(labels, preds)
 
 
-def cascadedPointMaskSigmoidLoss(self, y_true, y_pred):
+def cascadedPointMaskSigmoidLoss(y_true, y_pred):
     num_coords = 13
     method = tf.image.ResizeMethod.BILINEAR
 
@@ -78,12 +87,12 @@ def cascadedPointMaskSigmoidLoss(self, y_true, y_pred):
     true_means = layerUtils.MaskMean()(y_true)
     #boxes = layerUtils.BoxesFromCenters(28.0 / self.im_height)(true_means)
     #boxes = layerUtils.PerturbBboxes([0.8, 1.2], [-0.25, 0.25])(boxes)
-    boxes = layerUtils.BoxesFromCenters(28.0 / self.im_height)(mask_means)
+    boxes = layerUtils.BoxesFromCenters(28.0 / 224.0)(mask_means)
 
     # avoid penalizing refined mask when the initial estimate is not even close to truth
     sqrd_diffs = tf.squared_difference(mask_means, true_means)
     dists = tf.sqrt(tf.reduce_sum(sqrd_diffs, axis=-1))
-    thresh = 0.30 * 28.0 / self.im_height
+    thresh = 0.30 * 28.0 / 224.0
     loss_mask = tf.where(dists < thresh, tf.ones(tf.shape(dists)), tf.zeros(tf.shape(dists)))
     loss_mask = tf.expand_dims(loss_mask, 1)
     loss_mask = tf.expand_dims(loss_mask, 1)
@@ -101,10 +110,10 @@ def cascadedPointMaskSigmoidLoss(self, y_true, y_pred):
     refined_preds = layerUtils.Resize(28, method)(refined_preds)
     refined_preds *= loss_mask
 
-    return self.pointMaskDistanceLoss(labels, refined_preds)
+    return pointMaskDistanceLoss(labels, refined_preds)
 
 
-def pointMaskDistance(self, labels, preds):
+def pointMaskDistance(labels, preds):
     """
     Sum of euclidean distances squared between the centers of preds and labels. 
     """
@@ -119,8 +128,8 @@ def pointMaskDistance(self, labels, preds):
     preds = tf.transpose(preds, [0, 3, 1, 2])
 
     # even the labels are not necessarily normalized
-    labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + self.epsilon, 2, False)
-    preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + self.epsilon, 2, False)
+    labels /= utils.expandDimsRepeatedly(tf.reduce_sum(labels, axis=[2,3]) + epsilon, 2, False)
+    preds /= utils.expandDimsRepeatedly(tf.reduce_sum(preds, axis=[2,3]) + epsilon, 2, False)
 
     # performs a weighted sum to get center coordinates
     x_label = tf.reduce_sum(x_inds * labels, axis=[2,3])

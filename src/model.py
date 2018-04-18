@@ -15,6 +15,8 @@ from keras.models import load_model
 from keras.applications import mobilenet
 from keras.applications.imagenet_utils import _obtain_input_shape
 from keras import backend as K
+from losses import pointMaskDistanceLossPresetDims, cascadedPointMaskSigmoidLoss
+from keras.models import load_model
 import utils.layerUtils as layerUtils
 import tensorflow as tf
 
@@ -28,7 +30,32 @@ from keras.engine.topology import get_source_inputs
 from depthwise_conv2d import DepthwiseConvolution2D
 
 
-def getPointMaskerCascadedHead(self, backbone, out_side_len, in_channels):
+def getCustomObjects():
+    return {
+        'pointMaskSigmoidLoss': pointMaskSigmoidLoss,
+        'relu6': mobilenet.relu6,
+        'DepthwiseConvolution2d': DepthwiseConvolution2D,
+        'DepthwiseConv2D': DepthwiseConvolution2D, #mobilenet.DepthwiseConv2D, # there seems to be a name conflict lol
+        'CropAndResize' : layerUtils.CropAndResize,
+        'Resize': layerUtils.Resize,
+        'PerturbBboxes' : layerUtils.PerturbBboxes,
+        'PointMaskSoftmaxLossLayer': layerUtils.PointMaskSoftmaxLossLayer,
+        'StopGradientLayer': layerUtils.StopGradientLayer,
+        'pointMaskDistanceLoss': pointMaskDistanceLoss,
+        'pointMaskDistance': pointMaskDistance,
+        'pointMaskDistanceLossPresetDims': pointMaskDistanceLossPresetDims,
+        'MaskMean': layerUtils.MaskMean,
+        'BoxesFromCenters': layerUtils.BoxesFromCenters,
+        'SliceBboxes': layerUtils.SliceBboxes,
+        'cascadedPointMaskSigmoidLoss': cascadedPointMaskSigmoidLoss,
+    }
+
+
+def loadPointMaskerRefined(path):
+    model = load_model(path, custom_objects=getCustomObjects)
+    return model
+
+def getPointMaskerRefinedHead(backbone, out_side_len, in_channels):
     out_shape = (out_side_len, out_side_len, 1)
 
     method = tf.image.ResizeMethod.BILINEAR
@@ -40,11 +67,11 @@ def getPointMaskerCascadedHead(self, backbone, out_side_len, in_channels):
     return x
 
 
-def getPointMaskerConcat(self, compile=True):
-    im_shape = (self.im_width, self.im_height, 3)
+def getPointMasker(im_side_len, mask_side_len, compile=True):
+    im_shape = (im_side_len, im_side_len, 3)
 
     # lip only for now
-    l = self.mask_side_len
+    l = mask_side_len
     num_coords = 13
     img_input = Input(shape=im_shape)
     label_masks = Input(shape=(l, l, num_coords))
@@ -63,8 +90,6 @@ def getPointMaskerConcat(self, compile=True):
     x = layerUtils.depthwiseConvBlock(x, 64, 128, down_sample=True)
     
     # 28x28
-    #z.append(layerUtils.depthwiseConvBlock(b, 128, 128))
-    #z.append(layerUtils.depthwiseConvBlock(x, 128, 128))
     x = layerUtils.depthwiseConvBlock(x, 128, 256, down_sample=True)
 
     # 14x14
@@ -72,26 +97,12 @@ def getPointMaskerConcat(self, compile=True):
     x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[2,2])
     x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[4,4])
     x = layerUtils.depthwiseConvBlock(x, 256, 256, dilation_rate=[8,8])
-    
-    #z.append(x)
 
     method = tf.image.ResizeMethod.BILINEAR
     x = layerUtils.depthwiseConvBlock(x, 256, 128)
     x = layerUtils.Resize(28, method)(x)
-    
-    #z[0] = layerUtils.depthwiseConvBlock(z[0], 128, 64)
-    #x = Concatenate()([x, z[0]])
-    
-    #x = layerUtils.depthwiseConvBlock(x, 192, 128)
     x = layerUtils.depthwiseConvBlock(x, 128, num_coords, final_activation='linear')
-    #x = layerUtils.depthwiseConvBlock(x, 192, num_coords, final_activation='linear')
-    #x = layerUtils.depthwiseConvBlock(x, 32, num_coords, final_activation='linear')
-
-    #loss = layerUtils.PointMaskSoftmaxLossLayer(l)([label_masks, x])
-    #loss = layerUtils.MaskSigmoidLossLayerNoCrop(l)([label_masks, x])
-    #x = Activation('sigmoid')(x)
     pred = x
-    #loss = Lambda(lambda x: x, name='f0')(loss)
     
     model = Model(
         inputs=[img_input], 
@@ -101,17 +112,17 @@ def getPointMaskerConcat(self, compile=True):
     #optimizer = optimizers.adam(lr=6E-2)
     if compile:
         optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
-        model.compile(loss=[ self.pointMaskSigmoidLoss ], optimizer=optimizer)
+        model.compile(loss=[ pointMaskSigmoidLoss ], optimizer=optimizer)
     return model, backbone
 
-
-def getPointMaskerConcatCascaded(self):
+# formerly getPointMaskerConcatRefined
+def getPointMaskerRefined(im_side_len, mask_side_len):
 
     # outerlip only for now
-    l = self.mask_side_len
+    l = mask_side_len
     num_coords = 13
     method = tf.image.ResizeMethod.BILINEAR
-    base_model, backbone = self.getPointMaskerConcat(compile=False)
+    base_model, backbone = getPointMasker(im_side_len, mask_side_len, compile=False)
     img_input = base_model.input
     base_preds = base_model.output
     base_preds_normalized = Activation('sigmoid')(base_preds)
@@ -119,7 +130,7 @@ def getPointMaskerConcatCascaded(self):
     # get crop for each coordinate
     # note that boxes and mask means are all in normalized image coordinates, i.e [0, 1]
     mask_means = layerUtils.MaskMean()(base_preds_normalized)
-    boxes = layerUtils.BoxesFromCenters(28.0 / self.im_height)(mask_means)
+    boxes = layerUtils.BoxesFromCenters(28.0 / im_side_len)(mask_means)
 
     # slice and join to a separate refine model for each coordinate
     refined_coords = []
@@ -128,7 +139,7 @@ def getPointMaskerConcatCascaded(self):
 
         # using mask-rcnn's roi align to focus on feature crops
         crop = layerUtils.CropAndResize(7)([backbone, box])
-        refined_output = self.getPointMaskerCascadedHead(crop, 28, 64)
+        refined_output = getPointMaskerRefinedHead(crop, 28, 64)
         refined_coords.append(refined_output)
 
         # using crops from input directly 
@@ -140,13 +151,9 @@ def getPointMaskerConcatCascaded(self):
     refined_preds = Concatenate()(refined_coords)
     all_preds = Concatenate()([base_preds, refined_preds])
     model = Model(inputs=base_model.input, outputs=[base_preds, all_preds])
-    
-    #optimizer = optimizers.adam(lr=6E-2)
-
     optimizer = optimizers.SGD(lr=5E-5, momentum=0.9, nesterov=True)
     model.compile(
-        loss=[ self.pointMaskDistanceLossPresetDims, self.cascadedPointMaskSigmoidLoss ], 
-        # metrics=[ self.pointMaskDistance, self.zeroLoss ], 
+        loss=[ pointMaskDistanceLossPresetDims, cascadedPointMaskSigmoidLoss ], 
         optimizer=optimizer
     )
     return model

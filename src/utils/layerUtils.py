@@ -1,3 +1,6 @@
+from os import path, sys
+sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
+
 from keras.engine.topology import Layer
 from depthwise_conv2d import DepthwiseConvolution2D
 from keras import backend as K

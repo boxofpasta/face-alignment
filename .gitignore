@@ -4,3 +4,4 @@ downloads/
 models/
 outputs/
 outputs-2/
+tools/syncModel.py
